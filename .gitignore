@@ -1,0 +1,9 @@
+*.egg-info
+*.py[co]
+.DS_Store
+*~
+.#*
+## the next line needs to start with a backslash to avoid looking like
+## a comment
+\#*#
+/tmp
