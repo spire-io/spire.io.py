@@ -104,10 +104,14 @@ class Session(object):
         self.channels_url = channels_url
         self.client = client # has the schema and notification urls on it
 
-    def channel(self, channel_name=None): # None is the root channel
+    def channel(self, name=None, description=None): # None is the root channel
+        # TODO move this into the channel class to avoid repetition
         data = {}
-        if channel_name:
-            data['name'] = channel_name
+        if name is not None:
+            data['name'] = name
+        if description is not None:
+            data['description'] = description
+
         response = requests.post(
             self.channels_url,
             headers={
@@ -125,29 +129,48 @@ class Session(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        return Channel(self.client, parsed['url'], name=parsed.get('name', None))
+        return Channel(self, parsed['url'], name=parsed.get('name', None))
 
 class Channel(object):
     # For now we will let users handle subchannels themselves using dot
     # notation. At some point managing the channel tree in the library would be
     # neat.
-    def __init__(self, client, url, name=None):
-        self.client = client
+    def __init__(self, session, url, name=None):
+        self.session = session
         self.url = url
         self.name = name
 
         self.subscriptions = {}
 
-    def _create_subscription(self, filter=None):
-        content_type = self.client.schema['subscription']
+    def subchannel(self, name):
+        # TODO this should be in initialization
+        if not self.name:
+            raise SpireClientException("Cannot create subchannels of the root channel!")
+        response = requests.post(
+            self.session.channels_url,
+            headers={
+                'Accept': self.session.client.schema['channel'],
+                'Content-type': self.session.client.schema['channel'],
+                },
+            data=json.dumps(dict(name="%s.%s" % (self.name, name))),
+            )
+            
+        # TODO: DRY this up
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not create channel")
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        data = {}
-        if self.name is not None:
-            data['name'] = self.name
+        return Channel(self.session, parsed['url'], name=parsed['name'])
+
+    def _create_subscription(self, filter=None):
+        content_type = self.session.client.schema['subscription']
         response = requests.post(
             self.url,
             headers={'Accept': content_type, 'Content-type': content_type},
-            data=json.dumps(data),
+            data=json.dumps({}),
             )
 
         return json.loads(response.content)
@@ -157,7 +180,7 @@ class Channel(object):
         if url is None:
             url = self._create_subscription(filter)['url']
 
-        if self.client.async:
+        if self.session.client.async:
             # this first pass is all synchronous, i should probably stop
             # pretending like i've got the sync/async switching figured out
             # until I get the basic functionality working sync but I can't help
@@ -177,20 +200,19 @@ class Channel(object):
             # todo throttle fast reconnects
 
             params = dict(
-                headers={'Accept': self.client.schema['events']},
+                headers={'Accept': self.session.client.schema['events']},
                 timeout=SYNC_MAX_TIMEOUT,
                 )
-            if self.name is not None:
-                params['data'] = dict(channel=self.channel_name)
             response = requests.get(url, **params)
 
         return json.loads(response.content)
             
     def publish(self, message):
-        content_type = self.client.schema['message']
-        params = dict(
+        content_type = self.session.client.schema['message']
+        response = requests.post(
+            self.url,
             headers={'Accept': content_type, 'Content-type': content_type},
             data=json.dumps(dict(message=message)),
             )
-        response = requests.post(self.url, **params)
+
         return json.loads(response.content)
