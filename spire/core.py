@@ -10,6 +10,17 @@ SYNC_MAX_TIMEOUT = 60*10
 class SpireClientException(Exception):
     """Base class for spire client exceptions"""
 
+
+def require_discovery(func):
+    """Does what it sounds like it does. A decorator that can be applied to
+    instance methods of Client to ensure discovery has been called"""
+    # such lovely explicit naming!
+    def decorated_instance_method(*args, **kwargs):
+        # in instance methods, arg[0] will always be self
+        args[0]._discover() # synchronous!
+        return func(*args, **kwargs)
+    return decorated_instance_method
+
 class Client(object):
     def __init__(self, base_url, key=None, async=True):
         self.base_url = base_url
@@ -18,16 +29,6 @@ class Client(object):
         self.resources = None
         self.schema = None
         self.notifications = None
-
-    def get_session(self):
-        # TODO write a decorator that automatically discovers and starts a
-        # session if one is not present.
-        if self.async:
-            pass
-        else:
-            if not self.resources or not self.schema:
-                self._discover()
-            return self._start_session()
         
     def _discover(self):
         response = requests.get(
@@ -53,9 +54,11 @@ class Client(object):
 
         return self.resources
 
-    def _start_session(self):
+    @require_discovery
+    def session(self):
         """Start a session and set self.notifications. Requires discovery to
         have been called. TODO decorator that sets discovery"""
+        # synchronous!
         response = requests.post(
             self.resources['sessions']['url'],
             headers={
@@ -77,6 +80,7 @@ class Client(object):
     def _discover_async(self):
         pass
 
+    @require_discovery
     def create_account(self):
         # discover decorator
         response = requests.post(
