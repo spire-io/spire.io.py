@@ -69,7 +69,7 @@ class Client(object):
             )
         # TODO: DRY this up
         if not response: # XXX response is also falsy for 4xx
-            raise SpireClientException("Could not create session")
+            raise SpireClientException("Could not create session: %i" % response.status_code)
         try:
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
@@ -176,8 +176,9 @@ class Channel(object):
             headers={'Accept': content_type, 'Content-type': content_type},
             data=json.dumps({}),
             )
-
-        return json.loads(response.content)
+        parsed = json.loads(response.content)
+        self.subscriptions[filter] = parsed['url']
+        return parsed
 
     def subscribe(self, filter=None):
         url = self.subscriptions.get(filter, None)
@@ -209,7 +210,7 @@ class Channel(object):
                 )
             response = requests.get(url, **params)
 
-        return json.loads(response.content)
+        return json.loads(response.content)['messages']
             
     def publish(self, message):
         content_type = self.session.client.schema['message']

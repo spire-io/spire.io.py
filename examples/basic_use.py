@@ -21,15 +21,16 @@ def main():
 
     print "Global channel:"
     print "============="
-    print [x['message'] for x in channel.subscribe()['messages']]
+    print channel.subscribe()
 
     print "Named channel:"
     print "============="
-    print [x['message'] for x in named_channel.subscribe()['messages']]
+    print named_channel.subscribe()
+
 
     print "Subchannel:"
     print "============="
-    print [x['message'] for x in subchannel.subscribe()['messages']]
+    print subchannel.subscribe()
     
 if __name__ == '__main__':
     main()
