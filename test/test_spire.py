@@ -158,3 +158,6 @@ class TestSpireClient(unittest.TestCase):
 
     def test_create_and_publish_to_subchannel(self):
         raise SkipTest
+
+    def test_last_message_parameter(self):
+        raise SkipTest
