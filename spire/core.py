@@ -17,7 +17,9 @@ def require_discovery(func):
     # such lovely explicit naming!
     def decorated_instance_method(*args, **kwargs):
         # in instance methods, arg[0] will always be self
-        args[0]._discover() # synchronous!
+        zelf = args[0]
+        if not zelf.resources or not zelf.schema:
+            zelf._discover() # synchronous!
         return func(*args, **kwargs)
     return decorated_instance_method
 
@@ -49,7 +51,7 @@ class Client(object):
         if not _check_schema(discovery_result):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        self.resources = discovery_result
+        self.resources = discovery_result['resources']
         self.schema = discovery_result['schema']['1.0']['mimeTypes']
 
         return self.resources
@@ -74,7 +76,8 @@ class Client(object):
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
-        return Session(self, parsed['url'], parsed['channels']['url'])
+
+        return Session(self, parsed['url'], parsed['channels']['url'], parsed['subscriptions']['url'])
 
 
     def _discover_async(self):
@@ -103,9 +106,10 @@ class Client(object):
         
 
 class Session(object):
-    def __init__(self, client, url, channels_url):
+    def __init__(self, client, url, channels_url, subscriptions_url):
         self.url = url
         self.channels_url = channels_url
+        self.subscriptions_url = subscriptions_url
         self.client = client # has the schema and notification urls on it
 
     def channel(self, name=None, description=None): # None is the root channel
@@ -170,11 +174,16 @@ class Channel(object):
         return Channel(self.session, parsed['url'], name=parsed['name'])
 
     def _create_subscription(self, filter=None):
-        content_type = self.session.client.schema['subscription']
         response = requests.post(
-            self.url,
-            headers={'Accept': content_type, 'Content-type': content_type},
-            data=json.dumps({}),
+            self.session.subscriptions_url,
+            headers={
+                'Accept': self.session.client.schema['subscription'],
+                'Content-type': self.session.client.schema['subscription'],
+                },
+            data=json.dumps(dict(
+                    channels=[self.url],
+                    events='messages',
+                    )),
             )
         parsed = json.loads(response.content)
         self.subscriptions[filter] = parsed['url']
@@ -209,7 +218,6 @@ class Channel(object):
                 timeout=SYNC_MAX_TIMEOUT,
                 )
             response = requests.get(url, **params)
-
         return json.loads(response.content)['messages']
             
     def publish(self, message):

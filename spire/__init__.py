@@ -1,1 +1,1 @@
-from core import Client, SpireClientException
+from core import SpireClientException, Client, Session, Channel

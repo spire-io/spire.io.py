@@ -7,7 +7,7 @@ setup(
     name="spire",
     version="0.1",
     description="Client library for http://spire.io notification service",
-    extras_require=dict(test=REQS + ['nose >= 1.1.2']),
+    extras_require=dict(test=REQS + ['nose >= 1.1.2', 'stubserver >= 0.2']),
     install_requires=REQS,
     packages=find_packages(),
     test_suite='nose.collector',
