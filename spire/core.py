@@ -5,6 +5,11 @@ except ImportError:
 
 import requests
 
+try:
+    from requests import async as r_async
+except ImportError:
+    pass
+
 SYNC_MAX_TIMEOUT = 60*10
 
 class SpireClientException(Exception):
@@ -27,10 +32,10 @@ class Client(object):
     def __init__(self, base_url, key=None, async=True):
         self.base_url = base_url
         self.key = key
-        self.async = async
         self.resources = None
         self.schema = None
         self.notifications = None
+        self.async = async
         
     def _discover(self):
         response = requests.get(
@@ -58,8 +63,7 @@ class Client(object):
 
     @require_discovery
     def session(self):
-        """Start a session and set self.notifications. Requires discovery to
-        have been called. TODO decorator that sets discovery"""
+        """Start a session and set self.notifications."""
         # synchronous!
         response = requests.post(
             self.resources['sessions']['url'],
@@ -189,21 +193,32 @@ class Channel(object):
         self.subscriptions[filter] = parsed['url']
         return parsed
 
-    def subscribe(self, filter=None):
+    def subscribe(self, filter=None, callback=None):
         url = self.subscriptions.get(filter, None)
         if url is None:
             url = self._create_subscription(filter)['url']
 
         if self.session.client.async:
-            # this first pass is all synchronous, i should probably stop
-            # pretending like i've got the sync/async switching figured out
-            # until I get the basic functionality working sync but I can't help
-            # leaving myself little notes like this
-            def _callback():
-                pass
-            self._on(url, _callback)
+            # TODO decoratorize this
+            if callback is None:
+                raise SpireClientException("callbacks required in async mode")
+            self._on(url, callback)
         else:
             return self._wait_for_message(url, filter=filter)
+
+    def _on(self, url, callback):
+        assert self.session.client.async
+        # todo handle reconnects in async mode
+        def _callback(response):
+            # TODO error handling for async
+            parsed = json.loads(response.content)
+            callback(parsed['messages'])
+        request = r_async.get(
+            url,
+            headers={'Accept': self.session.client.schema['events']},
+            hooks=dict(response=_callback),
+            )
+        r_async.map([request])
 
     def _wait_for_message(self, url, filter=None):
         # synchronous. long timeouts, reopen connections when they die
@@ -212,12 +227,11 @@ class Channel(object):
         while not response and tries < 5: # TODO remove tries
             tries = tries + 1
             # todo throttle fast reconnects
-
-            params = dict(
+            response = requests.get(
+                url,
                 headers={'Accept': self.session.client.schema['events']},
                 timeout=SYNC_MAX_TIMEOUT,
                 )
-            response = requests.get(url, **params)
         return json.loads(response.content)['messages']
             
     def publish(self, message):

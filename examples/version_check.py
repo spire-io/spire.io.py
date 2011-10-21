@@ -24,8 +24,6 @@ def run(client, node, dots=True):
             sys.stdout.write('.')
             sys.stdout.flush()
         # TODO filter support
-        if messages:
-            print messages
         for message in messages:
             if message['message'].startswith('report:'):
                 sys.stdout.write(message['message'] + '\n')
