@@ -81,7 +81,20 @@ class Client(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        return Session(self, parsed['url'], parsed['channels']['url'], parsed['subscriptions']['url'])
+        # This interface to Session is based on earlier versions of the session
+        # schema. It might make more sense to initialize Session with
+        # parsed['resources'] rather than the 3 arguments below. Then again,
+        # passing them as arguments makes clear that they are the values
+        # required to create a session, meaning we don't have to validate the
+        # schema in Session (if we do any schema validation it should be before
+        # creating the class, in my opinion/gut-feeling).
+
+        return Session(
+            self,
+            parsed['url'],
+            parsed['resources']['channels']['url'],
+            parsed['resources']['subscriptions']['url'],
+            )
 
 
     def _discover_async(self):
