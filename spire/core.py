@@ -117,7 +117,6 @@ class Client(object):
             raise SpireClientException("Could not create account")
         try:
             parsed = json.loads(response.content)
-            print response.content
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
         self.key = parsed['resources']['account']['key']
@@ -235,15 +234,15 @@ class Channel(object):
             parsed = json.loads(response.content)
             callback(parsed['messages'])
 
-        data=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
+        params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
         if last_message is not None:
-            data['last-message'] = str(last_message)
+            params['last-message'] = str(last_message)
 
         request = r_async.get(
             url,
             headers={'Accept': self.session.client.schema['events']},
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
-            data=data,
+            params=params,
             hooks=dict(response=_callback),
             )
         r_async.map([request])
@@ -252,10 +251,9 @@ class Channel(object):
         # synchronous. long timeouts, reopen connections when they die
         response = None
         tries = 0
-        data=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
+        params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
         if last_message is not None:
-            data['last-message'] = str(last_message)
-
+            params['last-message'] = str(last_message)
         while not response and tries < 5: # TODO remove tries
             tries = tries + 1
             # todo throttle fast reconnects
@@ -263,7 +261,7 @@ class Channel(object):
                 url,
                 headers={'Accept': self.session.client.schema['events']},
                 timeout=SUBSCRIBE_MAX_TIMEOUT+1,
-                data=data,
+                params=params,
                 )
         return json.loads(response.content)['messages']
             
