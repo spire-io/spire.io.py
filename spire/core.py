@@ -10,7 +10,7 @@ try:
 except ImportError:
     pass
 
-SYNC_MAX_TIMEOUT = 60*10
+SUBSCRIBE_MAX_TIMEOUT = 60*10
 
 class SpireClientException(Exception):
     """Base class for spire client exceptions"""
@@ -106,19 +106,24 @@ class Client(object):
         response = requests.post(
             self.resources['accounts']['url'],
             headers={
-                'Accept': self.schema['account'],
+                'Accept': self.schema['session'],
                 'Content-type': self.schema['account'],
                 },
             data=json.dumps({}),
             )
+
         # TODO: DRY this up
         if not response: # XXX response is also falsy for 4xx
             raise SpireClientException("Could not create account")
         try:
             parsed = json.loads(response.content)
+            print response.content
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
-        self.key = parsed['key']
+        self.key = parsed['resources']['account']['key']
+        # TODO, this now returns a session object, so we can create a session
+        # right here and return it on the first session() call rather than
+        # making a new request
         return parsed
         
 
@@ -164,7 +169,6 @@ class Channel(object):
         self.session = session
         self.url = url
         self.name = name
-
         self.subscriptions = {}
 
     def subchannel(self, name):
@@ -206,7 +210,7 @@ class Channel(object):
         self.subscriptions[filter] = parsed['url']
         return parsed
 
-    def subscribe(self, filter=None, callback=None):
+    def subscribe(self, filter=None, last_message=None, callback=None):
         url = self.subscriptions.get(filter, None)
         if url is None:
             url = self._create_subscription(filter)['url']
@@ -215,35 +219,51 @@ class Channel(object):
             # TODO decoratorize this
             if callback is None:
                 raise SpireClientException("callbacks required in async mode")
-            self._on(url, callback)
+            self._on(url, callback, last_message=last_message)
         else:
-            return self._wait_for_message(url, filter=filter)
+            return self._wait_for_message(
+                url,
+                filter=filter,
+                last_message=last_message,
+                )
 
-    def _on(self, url, callback):
+    def _on(self, url, callback, last_message=None):
         assert self.session.client.async
         # todo handle reconnects in async mode
         def _callback(response):
             # TODO error handling for async
             parsed = json.loads(response.content)
             callback(parsed['messages'])
+
+        data=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
+        if last_message is not None:
+            data['last-message'] = str(last_message)
+
         request = r_async.get(
             url,
             headers={'Accept': self.session.client.schema['events']},
+            timeout=SUBSCRIBE_MAX_TIMEOUT+1,
+            data=data,
             hooks=dict(response=_callback),
             )
         r_async.map([request])
 
-    def _wait_for_message(self, url, filter=None):
+    def _wait_for_message(self, url, filter=None, last_message=None):
         # synchronous. long timeouts, reopen connections when they die
         response = None
         tries = 0
+        data=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
+        if last_message is not None:
+            data['last-message'] = str(last_message)
+
         while not response and tries < 5: # TODO remove tries
             tries = tries + 1
             # todo throttle fast reconnects
             response = requests.get(
                 url,
                 headers={'Accept': self.session.client.schema['events']},
-                timeout=SYNC_MAX_TIMEOUT,
+                timeout=SUBSCRIBE_MAX_TIMEOUT+1,
+                data=data,
                 )
         return json.loads(response.content)['messages']
             

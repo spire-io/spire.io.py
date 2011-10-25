@@ -111,7 +111,7 @@ class TestSpireClient(unittest.TestCase):
             # want to follow in future tests
             self.server.expect(
                 method='GET',
-                url="/").and_return(
+                url="/$").and_return(
                 mime_type='application/json',
                 content=json.dumps(DISCOVERY),
                 )

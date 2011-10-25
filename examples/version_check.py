@@ -31,7 +31,6 @@ def run(client, node, dots=True):
 
         if 'getVersion' in [x['message'] for x in messages]:
             channel.publish('report: %s: %s' % (node, report_version()))
-        time.sleep(2) # stubby doesn't long-poll
 
 def ask(client):
     sys.stdout.write('asking\n')
