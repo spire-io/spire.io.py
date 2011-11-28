@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup, find_packages
 
-REQS = ['requests >= 0.6.4'] # ['gevent >= 0.13.6']
+REQS = ['requests >= 0.8.3'] # ['gevent >= 0.13.6']
 
 setup(
     name="spire",

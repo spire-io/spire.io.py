@@ -2,7 +2,7 @@
 Example application using spire library for realtime notifications
 """
 import optparse
-import signal
+import socket
 import subprocess
 import sys
 import time
@@ -16,39 +16,73 @@ def report_version():
         stdout=subprocess.PIPE,
         ).stdout.read()
 
-def run(client, node, dots=True):
+def run(client, node, dots=True, last_message=None):
     channel = client.session().channel('myService.versionNotifier')
+    # set last message
+    # oh python you crazy
+    class MessageProcessor(object):
+        def __init__(self, last_message):
+            if last_message is None:
+                last_message = 0
+            self.last_message = last_message
+        def process(self, messages):
+            for message in messages:
+                last_message = message['key']
+                if last_message > self.last_message:
+                    self.last_message = last_message
+                if message['message'].startswith('report:'):
+                    sys.stdout.write(message['message'] + '\n')
+                    sys.stdout.flush()
+            fp = file('.last-message', 'w')
+            fp.write(str(last_message))
+            fp.close()
+
+            if 'getVersion' in [x['message'] for x in messages]:
+                print "getting version"
+                channel.publish('report: %s: %s' % (node, report_version()))
+    mp = MessageProcessor(last_message)
     while True:
-        messages = channel.subscribe()
+        messages = channel.subscribe(
+            last_message=mp.last_message,
+            callback=mp.process,
+            )
+        if messages:
+            mp.process(messages)
         if dots:
             sys.stdout.write('.')
             sys.stdout.flush()
         # TODO filter support
-        for message in messages:
-            if message['message'].startswith('report:'):
-                sys.stdout.write(message['message'] + '\n')
-                sys.stdout.flush()
 
-        if 'getVersion' in [x['message'] for x in messages]:
-            channel.publish('report: %s: %s' % (node, report_version()))
 
 def ask(client):
     sys.stdout.write('asking\n')
     client.session().channel('myService.versionNotifier').publish('getVersion')
     
 if __name__ == '__main__':
-    parser = optparse.OptionParser(usage="%prog host key nodename")
+    last_message = None
+    try:
+        fp = file('.last-message')
+        last_message = fp.read().strip()
+        fp.close()
+    except IOError:
+        pass
+    parser = optparse.OptionParser(usage="%prog wait|ask host key [nodename]")
     parser.add_option('--dots', action="store_true", default=False, dest="dots")
     opts, args = parser.parse_args()
-    if len(args) != 3:
-        parser.error('Host, key and nodename required')
+    if len(args) < 3:
+        parser.error('mode, host and key required')
+    try:
+        nodename = args[3]
+    except IndexError:
+        nodename = socket.gethostname()
+    client = spire.Client(args[1], key=args[2], async=True)
 
-    client = spire.Client(args[0], key=args[1], async=False) # Async mode NYI    
-    def ask_handler(signum, stack):
-        sys.stdout.write('asking in handler\n')
+    if args[0] == 'wait':
+        run(client, nodename, opts.dots, last_message)
+    elif args[0] == 'ask':
         ask(client)
-
-    signal.signal(signal.SIGUSR1, ask_handler)
-    run(client, args[2], opts.dots)
+    else:
+        parser.print_usage()
+        sys.exit(1)
     
 

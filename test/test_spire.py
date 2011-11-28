@@ -1,6 +1,6 @@
 """
 Integration tests for the Spire client library. If the environment variable
-SPIRE_API_KEY (and optionally SPIRE_HOST) is set, they will run against the
+SPIRE_KEY (and optionally SPIRE_HOST) is set, they will run against the
 remote API, otherwise a stub API will be used.
 """
 
@@ -70,32 +70,28 @@ NEW_SESSION = {
     }
 
 class TestSpireClient(unittest.TestCase):
-    def get_client(self):
-        return spire.Client('http://localhost:1337', key='1', async=False)
-        
     def setUp(self):
-        # Use stub server running elsewhere on my machine
-        self.server = None
-        self.client = self.get_client()
+        self.client, self.server = self.get_client()
+        if self.server is not None:
+            self.server.run()
 
-    def __setUp_OLD(self):
-        """Currently not used. Keeping this here in case I figure out / fix
-        stubserver. I know git spelunking is for that, but this project is
-        still in its experimentation phase - I'll worry about a clean history
-        when it resembles production code"""
-
-        spire_key =  os.environ.get('SPIRE_API_KEY', None)
+    def get_client(self):
+        spire_key =  os.environ.get('SPIRE_KEY', None)
         if spire_key is not None:
-            self.server = None
-            self.client = spire.Client(
-                os.environ.get('SPIRE_HOST', 'http://spire.io'),
+            server = None
+            client = spire.Client(
+                os.environ.get('SPIRE_HOST', 'https://api.spire.io'),
                 key = spire_key,
+                async=False,
                 )
         else:
             stub_port = 3133
-            self.server = stubserver.StubServer(stub_port)
-            self.server.run()
-            self.client = spire.Client("http://localhost/%i" % stub_port)
+            server = stubserver.StubServer(stub_port)
+            client = spire.Client(
+                "http://localhost/%i" % stub_port,
+                async=False,
+                )
+        return (client, server)
 
     def tearDown(self):
         if self.server:
@@ -136,20 +132,20 @@ class TestSpireClient(unittest.TestCase):
         assert session.client.resources is not None
         assert session.client.schema is not None
 
-    def test_create_and_publish_to_global_channel(self):
+    def test_create_and_publish_to_default_channel(self):
         first_client_channel = self.client.session().channel()
-        second_client_channel = self.get_client().session().channel()
+        second_client_channel = self.get_client()[0].session().channel()
         assert first_client_channel.session != second_client_channel.session
 
         first_client_channel.publish('picture yourself on a boat on a river')
         eq(
-            [x['message'] for x in second_client_channel.subscribe()],
+            [x['content'] for x in second_client_channel.subscribe()][-1:],
             ['picture yourself on a boat on a river'],
             )
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
         eq(
-            [x['message'] for x in second_client_channel.subscribe()],
+            [x['content'] for x in second_client_channel.subscribe()][-2:],
             ['picture yourself on a boat on a river', 'with tangerine trees and marmalade skies'],
             )
 

@@ -1,10 +1,16 @@
+import os
+import sys
+
 import spire
 
 import requests
 
 def main():
-    client = spire.Client('http://localhost:1337', async=False)
-    client.create_account() # TODO: automate account creation if no key is passed?
+    key = os.environ.get('SPIRE_KEY', None)
+    client = spire.Client(base_url="http://localhost:1337", async=False, key=key)
+    if not key:
+        client.create_account('alice@example.com', 'password')
+
     session = client.session()
 
     #channels
@@ -15,22 +21,13 @@ def main():
     named_channel = session.channel('foo', 'the foo channel')
     named_channel.publish('What hath Shark wrought?')
 
-    #subchannels
-    subchannel = named_channel.subchannel('bar')
-    subchannel.publish('Can you hear me now?')
-
-    print "Global channel:"
-    print "============="
+    print "Default channel:"
+    print "================"
     print channel.subscribe()
 
     print "Named channel:"
     print "============="
     print named_channel.subscribe()
-
-
-    print "Subchannel:"
-    print "============="
-    print subchannel.subscribe()
     
 if __name__ == '__main__':
     main()
