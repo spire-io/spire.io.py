@@ -10,7 +10,7 @@ try:
 except ImportError:
     pass
 
-SUBSCRIBE_MAX_TIMEOUT = 60*10
+SUBSCRIBE_MAX_TIMEOUT = 2
 
 class SpireClientException(Exception):
     """Base class for spire client exceptions"""
@@ -36,7 +36,9 @@ class Client(object):
         self.schema = None
         self.notifications = None
         self.async = async
-        
+        self.capability = None
+        self._unused_sessions = []
+
     def _discover(self):
         response = requests.get(
             self.base_url,
@@ -64,6 +66,8 @@ class Client(object):
     @require_discovery
     def session(self):
         """Start a session and set self.notifications."""
+        if self._unused_sessions:
+            return self._unused_sessions.pop()
         # synchronous!
         response = requests.post(
             self.resources['sessions']['url'],
@@ -94,6 +98,7 @@ class Client(object):
             parsed['url'],
             parsed['resources']['channels']['url'],
             parsed['resources']['subscriptions']['url'],
+            parsed['capability'],
             )
 
 
@@ -101,7 +106,7 @@ class Client(object):
         pass
 
     @require_discovery
-    def create_account(self):
+    def create_account(self, email, password):
         # discover decorator
         response = requests.post(
             self.resources['accounts']['url'],
@@ -109,7 +114,7 @@ class Client(object):
                 'Accept': self.schema['session'],
                 'Content-type': self.schema['account'],
                 },
-            data=json.dumps({}),
+            data=json.dumps(dict(email=email, password=password)),
             )
 
         # TODO: DRY this up
@@ -120,18 +125,29 @@ class Client(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
         self.key = parsed['resources']['account']['key']
-        # TODO, this now returns a session object, so we can create a session
-        # right here and return it on the first session() call rather than
-        # making a new request
-        return parsed
-        
+        import pprint
+        print "----------------------------------------"
+        print "Session from account creation"
+        pprint.pprint(parsed)
+        print "----------------------------------------"
+        self._unused_sessions.append(
+            Session(
+                self,
+                parsed['url'],
+                parsed['resources']['channels']['url'],
+                parsed['resources']['subscriptions']['url'],
+                parsed['capability'],
+                ),
+            )
+        return True
 
 class Session(object):
-    def __init__(self, client, url, channels_url, subscriptions_url):
+    def __init__(self, client, url, channels_url, subscriptions_url, capability):
         self.url = url
         self.channels_url = channels_url
         self.subscriptions_url = subscriptions_url
         self.client = client # has the schema and notification urls on it
+        self.capability = capability
 
     def channel(self, name=None, description=None): # None is the root channel
         # TODO move this into the channel class to avoid repetition
@@ -146,10 +162,13 @@ class Session(object):
             headers={
                 'Accept': self.client.schema['channel'],
                 'Content-type': self.client.schema['channel'],
+                'Authorization': "Capability %s" % self.capability,
                 },
             data=json.dumps(data),
             )
-
+        print "channel response"
+        print response.content
+        print response.request.headers
         # TODO: DRY this up
         if not response: # XXX response is also falsy for 4xx
             raise SpireClientException("Could not create channel")
