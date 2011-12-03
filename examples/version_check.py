@@ -62,7 +62,7 @@ if __name__ == '__main__':
     last_message = None
     try:
         fp = file('.last-message')
-        last_message = fp.read().strip()
+        last_message = long(fp.read().strip())
         fp.close()
     except IOError:
         pass
