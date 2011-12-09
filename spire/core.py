@@ -242,7 +242,7 @@ class Channel(object):
             # TODO decoratorize this
             if callback is None:
                 raise SpireClientException("callbacks required in async mode")
-            self._on(subscription, callback, last_message=last_message_timestamp)
+            self._on(subscription, callback, last_message_timestamp=last_message_timestamp)
         else:
             return self._wait_for_message(
                 subscription,
@@ -250,7 +250,7 @@ class Channel(object):
                 last_message_timestamp=last_message_timestamp,
                 )
 
-    def _on(self, url, callback, last_message_timestamp=None):
+    def _on(self, subscription, callback, philter=None, last_message_timestamp=None):
         assert self.session.client.async
         # todo handle reconnects in async mode
         def _callback(response):
@@ -260,14 +260,18 @@ class Channel(object):
 
         params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
         if last_message_timestamp is not None:
-            params['last-message'] = str(last_message_timestamp)
+            params['last-message'] = last_message_timestamp
 
         request = r_async.get(
-            url,
-            headers={'Accept': self.session.client.schema['events']},
+            subscription['url'],
+            headers={
+                'Accept': self.session.client.schema['events'],
+                'Authorization': "Capability %s" % subscription['capability'],
+                },
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
             params=params,
             hooks=dict(response=_callback),
+            config=my_config,
             )
         r_async.map([request])
 
