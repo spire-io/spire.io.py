@@ -1,0 +1,4 @@
+requests >= 0.8.3
+gevent >= 0.13.6
+nose >= 1.1.2
+stubserver >= 0.2
