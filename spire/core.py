@@ -14,6 +14,8 @@ except ImportError:
     pass
 
 SUBSCRIBE_MAX_TIMEOUT = 30
+MAX_CHANNEL_CREATE_RETRIES = 3
+
 my_config = {}
 if os.environ.get('REQUESTS_VERBOSE_LOGGING'):
     my_config['verbose'] = sys.stderr
@@ -159,13 +161,55 @@ class Client(object):
 
 class Session(object):
     def __init__(self, client, url, channels_url, subscriptions_url, capabilities):
+        # TODO, simplify this from a bunch of args into just holding the whole
+        # session dict and having some helper methods to extract juicy details
+        # from it, like the other libraries
         self.url = url
         self.channels_url = channels_url
         self.subscriptions_url = subscriptions_url
         self.client = client # has the schema and notification urls on it
         self.capabilities = capabilities
+        self._cached_channels = {}
+        self._channel_retries = {}
+
+    def _refresh(self):
+        # If another session creates a channel after we get our session, and we
+        # try to create the same channel, it will return 409 Conflict. This
+        # method fetches the session and updates the ivars
+        #
+        # This is copypasta from above. TODO: refactor requests and parsing
+        response = requests.get(
+            self.url,
+            headers={
+                'Accept': self.client.schema['session'],
+                'Authorization': "Capability %s" % self.capabilities['session'],
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not refresh session: %i" % response.status_code)
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire endpoint returned invalid JSON")
+        self.capabilities['session'] = parsed['capability']
+        for key, value in parsed['resources'].iteritems():
+            self.capabilities[key] = value['capability']
+        self.url = parsed['url']
+        self.channels_url = parsed['resources']['channels']['url']
+ 
+        for channel_name, channel_resource in parsed['resources']['channels']['resources'].iteritems():
+            self._cached_channels[channel_name] = Channel(
+                self,
+                channel_resource,
+                )
+        self.subscriptions_url = parsed['resources']['subscriptions']['url']
+        return True
 
     def channel(self, name=None, description=None): # None is the root channel
+        # Short circuit alert!
+        if self._cached_channels.get(name, None):
+            return self._cached_channels[name]
+
         # TODO move this into the channel class to avoid repetition
         data = {}
 
@@ -174,8 +218,7 @@ class Session(object):
         if name is None:
             name = 'everyone'
 
-        if name is not None:
-            data['name'] = name
+        data['name'] = name
         if description is not None:
             data['description'] = description
             
@@ -192,24 +235,31 @@ class Session(object):
 
         # TODO: DRY this up
         if not response: # XXX response is also falsy for 4xx
-            raise SpireClientException("Could not create channel")
+            retries = self._channel_retries.get(name, 0)
+            if response.status_code == 409 and retries < MAX_CHANNEL_CREATE_RETRIES:
+                self._refresh()
+                self._channel_retries[name] = retries + 1
+                return self.channel(name, description)
+            else:
+                raise SpireClientException("Could not create channel")
         try:
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        return Channel(self, parsed['url'], parsed['capability'], name=name)
+        channel = Channel(self, parsed)
+        self._cached_channels[name] = channel
+        return channel
 
 class Channel(object):
-    def __init__(self, session, url, capability, name=None):
+    def __init__(self, session, channel_resource):
         self.session = session
-        self.url = url
-        self.name = name
-        self.capability = capability
-        self.subscriptions = {}
+        self.channel_resource = channel_resource
         self.last_message_timestamp = None
 
-    def _create_subscription(self, philter=None):
+    def _create_subscription(self, name=None):
+        if name is None:
+            name = 'default'
         response = requests.post(
             self.session.subscriptions_url,
             headers={
@@ -218,25 +268,29 @@ class Channel(object):
                 'Authorization': "Capability %s" % self.session.capabilities['subscriptions'],
                 },
             data=json.dumps(dict(
-                    channels=[self.url],
+                    channels=[self.channel_resource['url']],
                     events='messages',
+                    name=name,
                     )),
             config=my_config,
             )
         if not response: # XXX response is also falsy for 4xx
+            # TODO: 409 handling here
             raise SpireClientException("Could not subscribe: %i" % response.status_code)
         try:
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscription endpoint returned invalid JSON")
 
-        self.subscriptions[philter] = parsed
+        self.channel_resource['subscriptions'][name] = parsed
         return parsed
 
-    def subscribe(self, philter=None, last_message_timestamp=None, callback=None):
-        subscription = self.subscriptions.get(philter, None)
+    def subscribe(self, name=None, last_message_timestamp=None, callback=None):
+        if name is None:
+            name = 'default' # xxx
+        subscription = self.channel_resource['subscriptions'].get(name, None)
         if subscription is None:
-            subscription = self._create_subscription(philter)
+            subscription = self._create_subscription(name=name)
 
         if self.session.client.async:
             # TODO decoratorize this
@@ -246,11 +300,10 @@ class Channel(object):
         else:
             return self._wait_for_message(
                 subscription,
-                philter=philter,
                 last_message_timestamp=last_message_timestamp,
                 )
 
-    def _on(self, subscription, callback, philter=None, last_message_timestamp=None):
+    def _on(self, subscription, callback, last_message_timestamp=None):
         assert self.session.client.async
         # todo handle reconnects in async mode
         def _callback(response):
@@ -278,7 +331,6 @@ class Channel(object):
     def _wait_for_message(
         self,
         subscription,
-        philter=None,
         last_message_timestamp=None,
         ):
         # synchronous. long timeouts, reopen connections when they die
@@ -286,10 +338,10 @@ class Channel(object):
         tries = 0
         params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
 
-        if last_message_timestamp is not None:
-            self.last_message_timestamp = last_message_timestamp
-        if self.last_message_timestamp is not None:
-            params['last-message'] = last_message_timestamp
+        self.last_message_timestamp = last_message_timestamp
+        if self.last_message_timestamp is None:
+            self.last_message_timestamp = 0
+        params['last-message'] = last_message_timestamp
 
         while not response and tries < 5: # TODO remove tries
             tries = tries + 1
@@ -306,12 +358,16 @@ class Channel(object):
                 )
 
         # TODO: DRY this up
+        # TODO: 409 handling here
         if not response: # XXX response is also falsy for 4xx
             raise SpireClientException("Could not subscribe: %i" % response.status_code)
         try:
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
+        for message in parsed['messages']:
+            if message['timestamp'] > self.last_message_timestamp:
+                self.last_message_timestamp = message['timestamp']
 
         return parsed['messages']
             
@@ -319,11 +375,11 @@ class Channel(object):
         content_type = self.session.client.schema['message']
 
         response = requests.post(
-            self.url,
+            self.channel_resource['url'],
             headers={
                 'Accept': content_type,
                 'Content-type': content_type,
-                'Authorization': "Capability %s" % self.capability,
+                'Authorization': "Capability %s" % self.channel_resource['capability'],
                 },
             data=json.dumps(dict(content=message)),
             config=my_config,

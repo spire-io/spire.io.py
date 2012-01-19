@@ -133,19 +133,22 @@ class TestSpireClient(unittest.TestCase):
         assert session.client.schema is not None
 
     def test_create_and_publish_to_default_channel(self):
-        first_client_channel = self.client.session().channel()
-        second_client_channel = self.get_client()[0].session().channel()
+        first_client_channel = self.client.session().channel('named-test-1')
+        second_client_channel = self.get_client()[0].session().channel('named-test-1')
         assert first_client_channel.session != second_client_channel.session
-
         first_client_channel.publish('picture yourself on a boat on a river')
+
+        messages = second_client_channel.subscribe()
         eq(
-            [x['content'] for x in second_client_channel.subscribe()][-1:],
+            [x['content'] for x in messages][-1:],
             ['picture yourself on a boat on a river'],
             )
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
+
+        messages = second_client_channel.subscribe()
         eq(
-            [x['content'] for x in second_client_channel.subscribe()][-2:],
+            [x['content'] for x in messages][-2:],
             ['picture yourself on a boat on a river', 'with tangerine trees and marmalade skies'],
             )
 
