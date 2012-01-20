@@ -370,6 +370,17 @@ class Channel(object):
                 self.last_message_timestamp = message['timestamp']
 
         return parsed['messages']
+
+    def delete(self):
+        response = requests.delete(
+            self.channel_resource['url'],
+            headers={
+                'Authorization': "Capability %s" % self.channel_resource['capability'],
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Failed to delete channel: %i" % response.status_code)
+        
             
     def publish(self, message):
         content_type = self.session.client.schema['message']

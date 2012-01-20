@@ -133,8 +133,8 @@ class TestSpireClient(unittest.TestCase):
         assert session.client.schema is not None
 
     def test_create_and_publish_to_default_channel(self):
-        first_client_channel = self.client.session().channel('named-test-1')
-        second_client_channel = self.get_client()[0].session().channel('named-test-1')
+        first_client_channel = self.client.session().channel()
+        second_client_channel = self.get_client()[0].session().channel()
         assert first_client_channel.session != second_client_channel.session
         first_client_channel.publish('picture yourself on a boat on a river')
 
@@ -146,14 +146,31 @@ class TestSpireClient(unittest.TestCase):
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
 
-        messages = second_client_channel.subscribe()
+        messages = second_client_channel.subscribe(last_message_timestamp=0)
         eq(
             [x['content'] for x in messages][-2:],
             ['picture yourself on a boat on a river', 'with tangerine trees and marmalade skies'],
             )
 
     def test_create_and_publish_to_named_channel(self):
-        raise SkipTest
+        first_client_channel = self.client.session().channel('test-channel-name')
+        second_client_channel = self.get_client()[0].session().channel('test-channel-name')
+        assert first_client_channel.session != second_client_channel.session
+        first_client_channel.publish('Do you want ants?')
+
+        messages = second_client_channel.subscribe()
+        eq(
+            [x['content'] for x in messages][-1],
+            'Do you want ants?',
+            )
+
+        first_client_channel.publish("BECAUSE THAT'S HOW YOU GET ANTS")
+
+        messages = second_client_channel.subscribe()
+        eq(
+            [x['content'] for x in messages][-1],
+            "BECAUSE THAT'S HOW YOU GET ANTS",
+            )
 
     def test_create_and_publish_to_subchannel(self):
         raise SkipTest
