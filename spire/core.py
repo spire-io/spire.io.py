@@ -112,14 +112,7 @@ class Client(object):
         for key, value in parsed['resources'].iteritems():
             capabilities[key] = value['capability']
 
-        return Session(
-            self,
-            parsed['url'],
-            parsed['resources']['channels']['url'],
-            parsed['resources']['subscriptions']['url'],
-            capabilities,
-            )
-
+        return Session(self, parsed)
 
     def _discover_async(self):
         pass
@@ -148,28 +141,18 @@ class Client(object):
         capabilities = dict(session=parsed['capability'])
         for key, value in parsed['resources'].iteritems():
             capabilities[key] = value['capability']
-        self._unused_sessions.append(
-            Session(
-                self,
-                parsed['url'],
-                parsed['resources']['channels']['url'],
-                parsed['resources']['subscriptions']['url'],
-                capabilities,
-                ),
-            )
+        self._unused_sessions.append(Session(self, parsed))
+
         return True
 
 class Session(object):
-    def __init__(self, client, url, channels_url, subscriptions_url, capabilities):
+    def __init__(self, client, session_resource):
         # TODO, simplify this from a bunch of args into just holding the whole
         # session dict and having some helper methods to extract juicy details
         # from it, like the other libraries
-        self.url = url
-        self.channels_url = channels_url
-        self.subscriptions_url = subscriptions_url
         self.client = client # has the schema and notification urls on it
-        self.capabilities = capabilities
-        self._cached_channels = {}
+
+        self.session_resource = session_resource
         self._channel_retries = {}
 
     def _refresh(self):
@@ -179,10 +162,10 @@ class Session(object):
         #
         # This is copypasta from above. TODO: refactor requests and parsing
         response = requests.get(
-            self.url,
+            self.session_resource['url'],
             headers={
                 'Accept': self.client.schema['session'],
-                'Authorization': "Capability %s" % self.capabilities['session'],
+                'Authorization': "Capability %s" % self.get_capability('session'),
                 },
             )
         if not response: # XXX response is also falsy for 4xx
@@ -191,24 +174,37 @@ class Session(object):
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
-        self.capabilities['session'] = parsed['capability']
-        for key, value in parsed['resources'].iteritems():
-            self.capabilities[key] = value['capability']
-        self.url = parsed['url']
-        self.channels_url = parsed['resources']['channels']['url']
- 
-        for channel_name, channel_resource in parsed['resources']['channels']['resources'].iteritems():
-            self._cached_channels[channel_name] = Channel(
-                self,
-                channel_resource,
-                )
-        self.subscriptions_url = parsed['resources']['subscriptions']['url']
+        self.session_resource = parsed
+        self._channel_retries = {}
         return True
+
+    def get_capability(self, key):
+        if key == 'session':
+            return self.session_resource['capability']
+        else:
+            # TODO raise and handle exceptions here instead of returning None
+            resource = self.session_resource['resources'].get(key, None)
+            if resource:
+                return resource.get('capability', None)
+            else:
+                return None
+
+    def set_channel(self, name, channel):
+        self.session_resource['resources']['channels']['resources'][name] = channel
+        return channel
+
+    def get_channel(self, name):
+        resource = self.session_resource['resources']['channels']['resources'].get(name, None)
+        if resource is not None:
+            return Channel(self, resource) # cache objects
+        else:
+            return None
 
     def channel(self, name=None, description=None): # None is the root channel
         # Short circuit alert!
-        if self._cached_channels.get(name, None):
-            return self._cached_channels[name]
+        channel = self.get_channel(name)
+        if channel is not None:
+            return channel
 
         # TODO move this into the channel class to avoid repetition
         data = {}
@@ -223,11 +219,11 @@ class Session(object):
             data['description'] = description
             
         response = requests.post(
-            self.channels_url,
+            self.session_resource['resources']['channels']['url'],
             headers={
                 'Accept': self.client.schema['channel'],
                 'Content-type': self.client.schema['channel'],
-                'Authorization': "Capability %s" % self.capabilities['channels'],
+                'Authorization': "Capability %s" % self.get_capability('channels'),
                 },
             data=json.dumps(data),
             config=my_config,
@@ -248,7 +244,7 @@ class Session(object):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
         channel = Channel(self, parsed)
-        self._cached_channels[name] = channel
+        self.set_channel(name, channel)
         return channel
 
 class Channel(object):
@@ -265,7 +261,7 @@ class Channel(object):
             headers={
                 'Accept': self.session.client.schema['subscription'],
                 'Content-type': self.session.client.schema['subscription'],
-                'Authorization': "Capability %s" % self.session.capabilities['subscriptions'],
+                'Authorization': "Capability %s" % self.session.get_capability('subscriptions'),
                 },
             data=json.dumps(dict(
                     channels=[self.channel_resource['url']],

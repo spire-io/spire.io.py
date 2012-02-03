@@ -1,7 +1,7 @@
 """
 Integration tests for the Spire client library. If the environment variable
 SPIRE_KEY (and optionally SPIRE_HOST) is set, they will run against the
-remote API, otherwise a stub API will be used.
+remote API, otherwise a (currently broken) stub API will be used.
 """
 
 import os
@@ -172,8 +172,8 @@ class TestSpireClient(unittest.TestCase):
             "BECAUSE THAT'S HOW YOU GET ANTS",
             )
 
-    def test_create_and_publish_to_subchannel(self):
+    def test_last_message_parameter(self):
         raise SkipTest
 
-    def test_last_message_parameter(self):
+    def test_delete_channel(self):
         raise SkipTest
