@@ -145,6 +145,17 @@ class Client(object):
 
         return True
 
+def require_channnel_collection(func):
+    """A decorator to fetch the channel collection if necessary"""
+    def decorated_instance_method(*args, **kwargs):
+        # in instance methods, arg[0] will always be self
+        zelf = args[0]
+        if not zelf.channel_collection:
+            zelf._get_channel_collection() # synchronous!
+        return func(*args, **kwargs)
+    return decorated_instance_method
+
+
 class Session(object):
     def __init__(self, client, session_resource):
         # TODO, simplify this from a bunch of args into just holding the whole
@@ -154,6 +165,25 @@ class Session(object):
 
         self.session_resource = session_resource
         self._channel_retries = {}
+        self.channel_collection = None
+
+    def _get_channel_collection(self):
+        response = requests.get(
+            self.session_resource['resources']['channels']['url'],
+            headers={
+                'Accept': self.client.schema['channels'],
+                'Authorization': "Capability %s" % self.get_capability('channels'),
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not refresh session: %i" % response.status_code)
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire endpoint returned invalid JSON")
+
+        self.channel_collection = parsed
+        return parsed
 
     def _refresh(self):
         # If another session creates a channel after we get our session, and we
@@ -189,12 +219,14 @@ class Session(object):
             else:
                 return None
 
+    @require_channnel_collection
     def set_channel(self, name, channel):
-        self.session_resource['resources']['channels']['resources'][name] = channel
+        self.channel_collection[name] = channel
         return channel
 
+    @require_channnel_collection
     def get_channel(self, name):
-        resource = self.session_resource['resources']['channels']['resources'].get(name, None)
+        resource = self.channel_collection.get(name, None)
         if resource is not None:
             return Channel(self, resource) # cache objects
         else:
@@ -257,7 +289,7 @@ class Channel(object):
         if name is None:
             name = 'default'
         response = requests.post(
-            self.session.subscriptions_url,
+            self.session.session_resource['resources']['subscriptions']['url'],
             headers={
                 'Accept': self.session.client.schema['subscription'],
                 'Content-type': self.session.client.schema['subscription'],
