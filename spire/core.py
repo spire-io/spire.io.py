@@ -155,7 +155,6 @@ def require_channnel_collection(func):
         return func(*args, **kwargs)
     return decorated_instance_method
 
-
 class Session(object):
     def __init__(self, client, session_resource):
         # TODO, simplify this from a bunch of args into just holding the whole
@@ -166,6 +165,7 @@ class Session(object):
         self.session_resource = session_resource
         self._channel_retries = {}
         self.channel_collection = None
+        self.subscription_collection = None
 
     def _get_channel_collection(self):
         response = requests.get(
@@ -183,6 +183,24 @@ class Session(object):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
         self.channel_collection = parsed
+        return parsed
+
+    def _get_subscription_collection(self):
+        response = requests.get(
+            self.session_resource['resources']['subscriptions']['url'],
+            headers={
+                'Accept': self.client.schema['subscriptions'],
+                'Authorization': "Capability %s" % self.get_capability('subscriptions'),
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not refresh session: %i" % response.status_code)
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire endpoint returned invalid JSON")
+
+        self.subscription_collection = parsed
         return parsed
 
     def _refresh(self):
@@ -279,12 +297,26 @@ class Session(object):
         self.set_channel(name, channel)
         return channel
 
+def require_subscription_collection(func):
+    """A decorator to fetch the parent session's subscription collection if
+    necessary. I do not like having this decorator walk up to self.session to
+    do this work. It could use a minor redesign but this library needs to work
+    when the next version of the API is deployed :)"""
+    def decorated_instance_method(*args, **kwargs):
+        # in instance methods, arg[0] will always be self
+        zelf = args[0]
+        if not zelf.session.subscription_collection:
+            zelf.session._get_subscription_collection() # synchronous!
+        return func(*args, **kwargs)
+    return decorated_instance_method
+
 class Channel(object):
     def __init__(self, session, channel_resource):
         self.session = session
         self.channel_resource = channel_resource
         self.last_message_timestamp = None
 
+    @require_subscription_collection
     def _create_subscription(self, name=None):
         if name is None:
             name = 'default'
@@ -303,20 +335,23 @@ class Channel(object):
             config=my_config,
             )
         if not response: # XXX response is also falsy for 4xx
-            # TODO: 409 handling here
+            # if response.status_code == 409:
+            #     pass
+            # else:
             raise SpireClientException("Could not subscribe: %i" % response.status_code)
         try:
             parsed = json.loads(response.content)
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscription endpoint returned invalid JSON")
 
-        self.channel_resource['subscriptions'][name] = parsed
+        self.session.subscription_collection[name] = parsed # boooo
         return parsed
 
+    @require_subscription_collection
     def subscribe(self, name=None, last_message_timestamp=None, callback=None):
         if name is None:
-            name = 'default' # xxx
-        subscription = self.channel_resource['subscriptions'].get(name, None)
+            name = "default-%s" % self.channel_resource['key']
+        subscription = self.session.subscription_collection.get(name, None)
         if subscription is None:
             subscription = self._create_subscription(name=name)
 
@@ -364,12 +399,18 @@ class Channel(object):
         # synchronous. long timeouts, reopen connections when they die
         response = None
         tries = 0
-        params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
+        params = {
+            "timeout": SUBSCRIBE_MAX_TIMEOUT,
+            "order-by": "asc",
+            }
 
-        self.last_message_timestamp = last_message_timestamp
-        if self.last_message_timestamp is None:
-            self.last_message_timestamp = 0
-        params['last-message'] = last_message_timestamp
+        if last_message_timestamp is None:
+            if not self.last_message_timestamp:
+                self.last_message_timestamp = 0
+        else:
+            self.last_message_timestamp = last_message_timestamp
+
+        params['last-message'] = self.last_message_timestamp
 
         while not response and tries < 5: # TODO remove tries
             tries = tries + 1

@@ -140,7 +140,7 @@ class TestSpireClient(unittest.TestCase):
 
         messages = second_client_channel.subscribe()
         eq(
-            [x['content'] for x in messages][-1:],
+            [x['content'] for x in messages][:1],
             ['picture yourself on a boat on a river'],
             )
 
@@ -148,8 +148,8 @@ class TestSpireClient(unittest.TestCase):
 
         messages = second_client_channel.subscribe(last_message_timestamp=0)
         eq(
-            [x['content'] for x in messages][-2:],
-            ['picture yourself on a boat on a river', 'with tangerine trees and marmalade skies'],
+            [x['content'] for x in messages][:2],
+            ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
             )
 
     def test_create_and_publish_to_named_channel(self):
@@ -160,7 +160,7 @@ class TestSpireClient(unittest.TestCase):
 
         messages = second_client_channel.subscribe()
         eq(
-            [x['content'] for x in messages][-1],
+            [x['content'] for x in messages][0],
             'Do you want ants?',
             )
 
@@ -168,7 +168,7 @@ class TestSpireClient(unittest.TestCase):
 
         messages = second_client_channel.subscribe()
         eq(
-            [x['content'] for x in messages][-1],
+            [x['content'] for x in messages][0],
             "BECAUSE THAT'S HOW YOU GET ANTS",
             )
 
