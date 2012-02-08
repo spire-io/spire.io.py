@@ -399,8 +399,15 @@ class Channel(object):
 
         if callback is not None:
             assert self.session.client.async
-            request_kwargs['hooks'] = dict(response=callback)
-            r_async.get(subscription['url'], **request_kwargs)
+            def wrapped_callback(response):
+                try:
+                    parsed = json.loads(response.content)
+                except (ValueError, KeyError):
+                    raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
+                return callback(parsed['messages'])
+                
+            request_kwargs['hooks'] = dict(response=wrapped_callback)
+            request = r_async.get(subscription['url'], **request_kwargs)
             r_async.map([request])
             return True
         else:

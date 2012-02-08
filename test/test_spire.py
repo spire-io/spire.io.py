@@ -75,21 +75,21 @@ class TestSpireClient(unittest.TestCase):
         if self.server is not None:
             self.server.run()
 
-    def get_client(self):
+    def get_client(self, async=False):
         spire_key =  os.environ.get('SPIRE_KEY', None)
         if spire_key is not None:
             server = None
             client = spire.Client(
                 os.environ.get('SPIRE_HOST', 'https://api.spire.io'),
                 key = spire_key,
-                async=False,
+                async=async,
                 )
         else:
             stub_port = 3133
             server = stubserver.StubServer(stub_port)
             client = spire.Client(
                 "http://localhost/%i" % stub_port,
-                async=False,
+                async=async,
                 )
         return (client, server)
 
@@ -150,6 +150,35 @@ class TestSpireClient(unittest.TestCase):
         eq(
             [x['content'] for x in messages][:2],
             ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
+            )
+
+    def test_create_and_publish_to_default_channel_evented(self):
+        self.client, self.server = self.get_client(async=True)
+
+        first_client_channel = self.client.session().channel()
+        second_client_channel = self.get_client(async=True)[0].session().channel()
+        assert first_client_channel.session != second_client_channel.session
+        first_client_channel.publish('picture yourself on a boat on a river')
+
+        def _first_channel(messages):
+            eq(
+                [x['content'] for x in messages][:1],
+                ['picture yourself on a boat on a river'],
+                )
+            
+        second_client_channel.subscribe(callback=_first_channel)
+
+        first_client_channel.publish('with tangerine trees and marmalade skies')
+
+        def _second_channel(messages):
+            eq(
+                [x['content'] for x in messages][:2],
+                ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
+                )
+
+        second_client_channel.subscribe(
+            last_message_timestamp=0,
+            callback=_second_channel,
             )
 
     def test_create_and_publish_to_named_channel(self):
