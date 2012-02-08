@@ -355,54 +355,39 @@ class Channel(object):
         if subscription is None:
             subscription = self._create_subscription(name=name)
 
-        if self.session.client.async:
-            # TODO decoratorize this
-            if callback is None:
-                raise SpireClientException("callbacks required in async mode")
-            self._on(subscription, callback, last_message_timestamp=last_message_timestamp)
-        else:
-            return self._wait_for_message(
-                subscription,
-                last_message_timestamp=last_message_timestamp,
-                )
-
-    def _on(self, subscription, callback, last_message_timestamp=None):
-        assert self.session.client.async
-        # todo handle reconnects in async mode
-        def _callback(response):
-            # TODO error handling for async
-            parsed = json.loads(response.content)
-            callback(parsed['messages'])
-
-        params=dict(timeout=SUBSCRIBE_MAX_TIMEOUT)
-        if last_message_timestamp is not None:
-            params['last-message'] = last_message_timestamp
-
-        request = r_async.get(
-            subscription['url'],
-            headers={
-                'Accept': self.session.client.schema['events'],
-                'Authorization': "Capability %s" % subscription['capability'],
-                },
-            timeout=SUBSCRIBE_MAX_TIMEOUT+1,
-            params=params,
-            hooks=dict(response=_callback),
-            config=my_config,
+        return self._on(
+            subscription,
+            last_message_timestamp=last_message_timestamp,
+            callback=callback,
             )
-        r_async.map([request])
 
-    def _wait_for_message(
+    def _on(
         self,
         subscription,
         last_message_timestamp=None,
+        callback=None,
         ):
-        # synchronous. long timeouts, reopen connections when they die
+        """
+        If `callback` is not present, this is synchronous with long timeouts,
+        and connections that are reopened when they die. If `callback` *is*
+        present, we attempt to use requests' gevent support.
+        """
         response = None
         tries = 0
         params = {
             "timeout": SUBSCRIBE_MAX_TIMEOUT,
             "order-by": "asc",
             }
+
+        request_kwargs = dict(
+            headers={
+                'Accept': self.session.client.schema['events'],
+                'Authorization': "Capability %s" % subscription['capability'],
+                },
+            timeout=SUBSCRIBE_MAX_TIMEOUT+1,
+            params=params,
+            config=my_config,
+            )
 
         if last_message_timestamp is None:
             if not self.last_message_timestamp:
@@ -412,33 +397,31 @@ class Channel(object):
 
         params['last-message'] = self.last_message_timestamp
 
-        while not response and tries < 5: # TODO remove tries
-            tries = tries + 1
-            # todo throttle fast reconnects
-            response = requests.get(
-                subscription['url'],
-                headers={
-                    'Accept': self.session.client.schema['events'],
-                    'Authorization': "Capability %s" % subscription['capability'],
-                    },
-                timeout=SUBSCRIBE_MAX_TIMEOUT+1,
-                params=params,
-                config=my_config,
-                )
-
-        # TODO: DRY this up
-        # TODO: 409 handling here
-        if not response: # XXX response is also falsy for 4xx
-            raise SpireClientException("Could not subscribe: %i" % response.status_code)
-        try:
-            parsed = json.loads(response.content)
-        except (ValueError, KeyError):
-            raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
-        for message in parsed['messages']:
-            if message['timestamp'] > self.last_message_timestamp:
-                self.last_message_timestamp = message['timestamp']
-
-        return parsed['messages']
+        if callback is not None:
+            assert self.session.client.async
+            request_kwargs['hooks'] = dict(response=callback)
+            r_async.get(subscription['url'], **request_kwargs)
+            r_async.map([request])
+            return True
+        else:
+            while not response and tries < 5: # TODO remove tries
+                tries = tries + 1
+                # todo throttle fast reconnects
+                response = requests.get(subscription['url'], **request_kwargs)
+    
+            # TODO: DRY this up
+            # TODO: 409 handling here
+            if not response: # XXX response is also falsy for 4xx
+                raise SpireClientException("Could not subscribe: %i" % response.status_code)
+            try:
+                parsed = json.loads(response.content)
+            except (ValueError, KeyError):
+                raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
+            for message in parsed['messages']:
+                if message['timestamp'] > self.last_message_timestamp:
+                    self.last_message_timestamp = message['timestamp']
+    
+            return parsed['messages']
 
     def delete(self):
         response = requests.delete(
