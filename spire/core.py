@@ -59,7 +59,7 @@ class Client(object):
         try:
             discovery_result = json.loads(response.content)
             #YYY
-            
+
 
         except ValueError:
             raise SpireClientException("Spire endpoint returned invalid JSON")
@@ -71,7 +71,7 @@ class Client(object):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
         self.resources = discovery_result['resources']
-        
+
         self.schema = {}
         for key, value in discovery_result['schema']['1.0'].iteritems():
             self.schema[key] = value['mediaType']
@@ -200,7 +200,10 @@ class Session(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        self.subscription_collection = parsed
+        self.subscription_collection = {}
+        for key, resource in parsed.iteritems():
+            self.subscription_collection[key] = Subscription(self, resource)
+
         return parsed
 
     def _refresh(self):
@@ -267,7 +270,7 @@ class Session(object):
         data['name'] = name
         if description is not None:
             data['description'] = description
-            
+
         response = requests.post(
             self.session_resource['resources']['channels']['url'],
             headers={
@@ -344,8 +347,9 @@ class Channel(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscription endpoint returned invalid JSON")
 
-        self.session.subscription_collection[name] = parsed # boooo
-        return parsed
+        subscription = Subscription(self.session, parsed) # boooo
+        self.session.subscription_collection[name] = subscription
+        return subscription_collection
 
     @require_subscription_collection
     def subscribe(self, name=None, last_message_timestamp=None, callback=None):
@@ -371,7 +375,61 @@ class Channel(object):
         If `callback` is not present, this is synchronous with long timeouts,
         and connections that are reopened when they die. If `callback` *is*
         present, we attempt to use requests' gevent support.
+
+        This method is a proxy for the Subscription class'
+        `subscribe` method.
         """
+        return subscription.subscribe(
+            last_message_timestamp=last_message_timestamp,
+            callback=callback,
+            )
+
+    def delete(self):
+        response = requests.delete(
+            self.channel_resource['url'],
+            headers={
+                'Authorization': "Capability %s" % self.channel_resource['capability'],
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Failed to delete channel: %i" % response.status_code)
+
+
+    def publish(self, message):
+        content_type = self.session.client.schema['message']
+
+        response = requests.post(
+            self.channel_resource['url'],
+            headers={
+                'Accept': content_type,
+                'Content-type': content_type,
+                'Authorization': "Capability %s" % self.channel_resource['capability'],
+                },
+            data=json.dumps(dict(content=message)),
+            config=my_config,
+            )
+
+        # TODO: DRY this up
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not publish: %i" % response.status_code)
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire channel endpoint returned invalid JSON")
+
+        return parsed
+
+class Subscription(object):
+    def __init__(self, session, subscription_resource):
+        self.session = session
+        self.subscription_resource = subscription_resource
+        self.last_message_timestamp = None
+
+    def subscribe(
+        self,
+        last_message_timestamp=None,
+        callback=None,
+        ):
         response = None
         tries = 0
         params = {
@@ -382,7 +440,7 @@ class Channel(object):
         request_kwargs = dict(
             headers={
                 'Accept': self.session.client.schema['events'],
-                'Authorization': "Capability %s" % subscription['capability'],
+                'Authorization': "Capability %s" % self.subscription_resource['capability'],
                 },
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
             params=params,
@@ -405,17 +463,17 @@ class Channel(object):
                 except (ValueError, KeyError):
                     raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
                 return callback(parsed['messages'])
-                
+
             request_kwargs['hooks'] = dict(response=wrapped_callback)
-            request = r_async.get(subscription['url'], **request_kwargs)
+            request = r_async.get(self.subscription_resource['url'], **request_kwargs)
             r_async.map([request])
             return True
         else:
             while not response and tries < 5: # TODO remove tries
                 tries = tries + 1
                 # todo throttle fast reconnects
-                response = requests.get(subscription['url'], **request_kwargs)
-    
+                response = requests.get(self.subscription_resource['url'], **request_kwargs)
+
             # TODO: DRY this up
             # TODO: 409 handling here
             if not response: # XXX response is also falsy for 4xx
@@ -427,40 +485,5 @@ class Channel(object):
             for message in parsed['messages']:
                 if message['timestamp'] > self.last_message_timestamp:
                     self.last_message_timestamp = message['timestamp']
-    
+
             return parsed['messages']
-
-    def delete(self):
-        response = requests.delete(
-            self.channel_resource['url'],
-            headers={
-                'Authorization': "Capability %s" % self.channel_resource['capability'],
-                },
-            )
-        if not response: # XXX response is also falsy for 4xx
-            raise SpireClientException("Failed to delete channel: %i" % response.status_code)
-        
-            
-    def publish(self, message):
-        content_type = self.session.client.schema['message']
-
-        response = requests.post(
-            self.channel_resource['url'],
-            headers={
-                'Accept': content_type,
-                'Content-type': content_type,
-                'Authorization': "Capability %s" % self.channel_resource['capability'],
-                },
-            data=json.dumps(dict(content=message)),
-            config=my_config,
-            )
-
-        # TODO: DRY this up
-        if not response: # XXX response is also falsy for 4xx
-            raise SpireClientException("Could not publish: %i" % response.status_code)
-        try:
-            parsed = json.loads(response.content)
-        except (ValueError, KeyError):
-            raise SpireClientException("Spire channel endpoint returned invalid JSON")
-        
-        return parsed
