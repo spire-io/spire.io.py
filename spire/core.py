@@ -202,7 +202,7 @@ class Session(object):
 
         self.subscription_collection = {}
         for key, resource in parsed.iteritems():
-            self.subscription_collection[key] = Subscription(self, resource)
+            self.subscription_collection[key] = Subscription(self.client, resource)
 
         return parsed
 
@@ -347,7 +347,7 @@ class Channel(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscription endpoint returned invalid JSON")
 
-        subscription = Subscription(self.session, parsed) # boooo
+        subscription = Subscription(self.session.client, parsed) # boooo
         self.session.subscription_collection[name] = subscription
         return subscription
 
@@ -420,8 +420,8 @@ class Channel(object):
         return parsed
 
 class Subscription(object):
-    def __init__(self, session, subscription_resource):
-        self.session = session
+    def __init__(self, client, subscription_resource):
+        self.client = client
         self.subscription_resource = subscription_resource
         self.last_message_timestamp = None
 
@@ -439,7 +439,7 @@ class Subscription(object):
 
         request_kwargs = dict(
             headers={
-                'Accept': self.session.client.schema['events'],
+                'Accept': self.client.schema['events'],
                 'Authorization': "Capability %s" % self.subscription_resource['capability'],
                 },
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
@@ -456,7 +456,7 @@ class Subscription(object):
         params['last-message'] = self.last_message_timestamp
 
         if callback is not None:
-            assert self.session.client.async
+            assert self.client.async
             def wrapped_callback(response):
                 try:
                     parsed = json.loads(response.content)
