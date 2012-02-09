@@ -19,55 +19,15 @@ import stubserver
 
 import spire
 
-DISCOVERY = {
-    "resources": {
-        "accounts": {
-            "url": "http://localhost:3133/accounts"
-            }, 
-        "sessions": {
-            "url": "http://localhost:3133/sessions"
-            }
-        }, 
-    "schema": {
-        "1.0": {
-            "mimeTypes": {
-                "account": "application/vnd.spire-io.account+json;version=1.0", 
-                "accounts": "application/vnd.spire-io.accounts+json;version=1.0", 
-                "channel": "application/vnd.spire-io.channel+json;version=1.0", 
-                "channels": "application/vnd.spire-io.channels+json;version=1.0", 
-                "description": "application/vnd.spire-io.description+json;version=1.0", 
-                "events": "application/vnd.spire-io.events+json;version=1.0", 
-                "message": "application/vnd.spire-io.message+json;version=1.0", 
-                "session": "application/vnd.spire-io.session+json;version=1.0", 
-                "sessions": "application/vnd.spire-io.sessions+json;version=1.0", 
-                "subscription": "application/vnd.spire-io.subscription+json;version=1.0", 
-                "subscriptions": "application/vnd.spire-io.subscriptions+json;version=1.0"
-                }
-            }
-        }
-    }
+"""
+These constants are meant to be used in the stub server when the tests are run
+without a connection to the actual Spire service. The stub server isn't
+currently set up to work, though.
+"""
 
-NEW_SESSION = {
-    "account": {
-        "_channels": {}, 
-        "channels": {
-            "resources": {}, 
-            "url": "http://localhost:3133/session/20/channels"
-            }, 
-        "key": 4, 
-        "type": "account", 
-        "url": "http://localhost:3133/session/4/account"
-        }, 
-    "channels": {
-        "resources": {}, 
-        "url": "http://localhost:3133/session/20/channels"
-        }, 
-    "subscriptions": {
-        "url": "http://localhost:3133/session/20/subscriptions"
-        }, 
-    "type": "session", 
-    "url": "http://localhost:3133/session/20"
-    }
+DISCOVERY = {}
+
+NEW_SESSION = {}
 
 class TestSpireClient(unittest.TestCase):
     def setUp(self):
