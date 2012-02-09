@@ -349,7 +349,7 @@ class Channel(object):
 
         subscription = Subscription(self.session, parsed) # boooo
         self.session.subscription_collection[name] = subscription
-        return subscription_collection
+        return subscription
 
     @require_subscription_collection
     def subscribe(self, name=None, last_message_timestamp=None, callback=None):
