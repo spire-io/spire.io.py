@@ -162,7 +162,30 @@ class TestSpireClient(unittest.TestCase):
             )
 
     def test_channel_with_url_and_capability_only(self):
-        raise SkipTest
+        # awkwardness = refactor opportunity
+        session = self.client.session()
+        channel = session.channel(name='keep-it-safe')
+
+        unprivileged_client = spire.Client(
+            os.environ.get('SPIRE_HOST', 'https://api.spire.io'),
+            # Note lack of key
+            )
+
+        # would like to continue to refactor this to avoid discovering directly
+        unprivileged_client._discover()
+        unprivileged_channel = spire.Channel(
+            unprivileged_client,
+            None, # no session
+            channel.channel_resource,
+            )
+
+        channel.publish('you blocked me on facebook - prepare to die')
+        messages = channel.subscribe()
+        eq(
+            [x['content'] for x in messages][0],
+            'you blocked me on facebook - prepare to die',
+            )
+
 
     def test_subscription_with_url_and_capability_only(self):
         # awkwardness = refactor opportunity

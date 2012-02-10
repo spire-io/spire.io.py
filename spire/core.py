@@ -249,7 +249,7 @@ class Session(object):
     def get_channel(self, name):
         resource = self.channel_collection.get(name, None)
         if resource is not None:
-            return Channel(self, resource) # cache objects
+            return Channel(self.client, self, resource) # cache objects
         else:
             return None
 
@@ -296,7 +296,7 @@ class Session(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
 
-        channel = Channel(self, parsed)
+        channel = Channel(self.client, self, parsed)
         self.set_channel(name, channel)
         return channel
 
@@ -314,7 +314,8 @@ def require_subscription_collection(func):
     return decorated_instance_method
 
 class Channel(object):
-    def __init__(self, session, channel_resource):
+    def __init__(self, client, session, channel_resource):
+        self.client = client
         self.session = session
         self.channel_resource = channel_resource
         self.last_message_timestamp = None
@@ -326,8 +327,8 @@ class Channel(object):
         response = requests.post(
             self.session.session_resource['resources']['subscriptions']['url'],
             headers={
-                'Accept': self.session.client.schema['subscription'],
-                'Content-type': self.session.client.schema['subscription'],
+                'Accept': self.client.schema['subscription'],
+                'Content-type': self.client.schema['subscription'],
                 'Authorization': "Capability %s" % self.session.get_capability('subscriptions'),
                 },
             data=json.dumps(dict(
@@ -347,7 +348,7 @@ class Channel(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire subscription endpoint returned invalid JSON")
 
-        subscription = Subscription(self.session.client, parsed) # boooo
+        subscription = Subscription(self.client, parsed) # boooo
         self.session.subscription_collection[name] = subscription
         return subscription
 
@@ -396,7 +397,7 @@ class Channel(object):
 
 
     def publish(self, message):
-        content_type = self.session.client.schema['message']
+        content_type = self.client.schema['message']
 
         response = requests.post(
             self.channel_resource['url'],
