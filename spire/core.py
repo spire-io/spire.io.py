@@ -1,3 +1,7 @@
+"""
+Core classes for Spire.io client.
+"""
+
 import os
 import sys
 
