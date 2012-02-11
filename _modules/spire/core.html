@@ -1,0 +1,669 @@
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>spire.core &mdash; Spire.io.py 0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/default.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="Spire.io.py 0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" /> 
+  </head>
+  <body>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">Spire.io.py 0.1 documentation</a> &raquo;</li>
+          <li><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body">
+            
+  <h1>Source code for spire.core</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Spire.io client core.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">json</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">simplejson</span> <span class="kn">as</span> <span class="nn">json</span>
+
+<span class="kn">import</span> <span class="nn">requests</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span> <span class="nn">requests</span> <span class="kn">import</span> <span class="n">async</span> <span class="k">as</span> <span class="n">r_async</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="k">pass</span>
+
+<span class="n">SUBSCRIBE_MAX_TIMEOUT</span> <span class="o">=</span> <span class="mi">30</span>
+<span class="n">MAX_CHANNEL_CREATE_RETRIES</span> <span class="o">=</span> <span class="mi">3</span>
+
+<span class="n">my_config</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;REQUESTS_VERBOSE_LOGGING&#39;</span><span class="p">):</span>
+    <span class="n">my_config</span><span class="p">[</span><span class="s">&#39;verbose&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">stderr</span>
+
+<div class="viewcode-block" id="SpireClientException"><a class="viewcode-back" href="../../ref_spire.html#spire.core.SpireClientException">[docs]</a><span class="k">class</span> <span class="nc">SpireClientException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Base class for spire client exceptions&quot;&quot;&quot;</span>
+
+</div>
+<span class="k">def</span> <span class="nf">require_discovery</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Does what it sounds like it does. A decorator that can be applied to</span>
+<span class="sd">    instance methods of Client to ensure discovery has been called&quot;&quot;&quot;</span>
+    <span class="c"># such lovely explicit naming!</span>
+    <span class="k">def</span> <span class="nf">decorated_instance_method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># in instance methods, arg[0] will always be self</span>
+        <span class="n">zelf</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">zelf</span><span class="o">.</span><span class="n">resources</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">zelf</span><span class="o">.</span><span class="n">schema</span><span class="p">:</span>
+            <span class="n">zelf</span><span class="o">.</span><span class="n">_discover</span><span class="p">()</span> <span class="c"># synchronous!</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">decorated_instance_method</span>
+
+<div class="viewcode-block" id="Client"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Client">[docs]</a><span class="k">class</span> <span class="nc">Client</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Client class provides an entry point into all Spire.io</span>
+<span class="sd">    services. Currently certain kinds of API usage require directly</span>
+<span class="sd">    instantiating Channel and Subscription objects, but that will change soon</span>
+<span class="sd">    with the addition of helper methods on Client.</span>
+
+<span class="sd">    Client also holds essential info for API use like the discovery URL, API</span>
+<span class="sd">    key, and description resource (which contains information like</span>
+<span class="sd">    content-types and urls for each available resource).</span>
+
+<span class="sd">    If you have `libevent` and `gevent` installed on your system, Client can be</span>
+<span class="sd">    initialized in async mode::</span>
+
+<span class="sd">      client = Client(key=&#39;supersecret&#39;, async=True)</span>
+
+<span class="sd">    Note that this will change the API of e.g. Channel.publish and</span>
+<span class="sd">    Channel.subscribe to require a callback instead of blocking and returning</span>
+<span class="sd">    results.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="s">&#39;http://api.spire.io&#39;</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">async</span><span class="o">=</span><span class="bp">True</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_url</span> <span class="o">=</span> <span class="n">base_url</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">resources</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">notifications</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">async</span> <span class="o">=</span> <span class="n">async</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">capability</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unused_sessions</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">def</span> <span class="nf">_discover</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Fetch the descrption object, and set `self.schema` and</span>
+<span class="sd">        `self.resources`. This and other methods beginning with an underscore,</span>
+<span class="sd">        by convention, should not be relied on by consuming libraries. However,</span>
+<span class="sd">        this one is unlikely to change in a minor version. After setting schema</span>
+<span class="sd">        and resources on the Client instance, this returns the full, parsed</span>
+<span class="sd">        description resource.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s">&#39;Accept&#39;</span><span class="p">:</span><span class="s">&#39;application/json&#39;</span><span class="p">},</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire discovery failed&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">discovery_result</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+            <span class="c">#YYY</span>
+
+
+        <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">_check_schema</span><span class="p">(</span><span class="n">schema</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">True</span> <span class="c"># todo json schema or iterate over kvs</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_check_schema</span><span class="p">(</span><span class="n">discovery_result</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">resources</span> <span class="o">=</span> <span class="n">discovery_result</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">discovery_result</span><span class="p">[</span><span class="s">&#39;schema&#39;</span><span class="p">][</span><span class="s">&#39;1.0&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="s">&#39;mediaType&#39;</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">discovery_result</span>
+
+    <span class="nd">@require_discovery</span>
+    <span class="k">def</span> <span class="nf">session</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Makes a request to Spire.io and uses the result to create and</span>
+<span class="sd">        return a new instance of `Session`. This can be used to create</span>
+<span class="sd">        channels, subscriptions and so forth.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unused_sessions</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unused_sessions</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="c"># synchronous!</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="p">[</span><span class="s">&#39;sessions&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;session&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Content-type&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;account&#39;</span><span class="p">],</span>
+                <span class="p">},</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">key</span><span class="p">)),</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="c"># TODO: DRY this up</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not create session: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="n">capabilities</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">parsed</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">parsed</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="n">capabilities</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">Session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parsed</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_discover_async</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">pass</span>
+
+    <span class="nd">@require_discovery</span>
+    <span class="k">def</span> <span class="nf">create_account</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Creates a new Spire.io account and uses the new credentials to</span>
+<span class="sd">        authorize the Client instance to create Sessions. Returns True on</span>
+<span class="sd">        success.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">resources</span><span class="p">[</span><span class="s">&#39;accounts&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;session&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Content-type&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;account&#39;</span><span class="p">],</span>
+                <span class="p">},</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">email</span><span class="o">=</span><span class="n">email</span><span class="p">,</span> <span class="n">password</span><span class="o">=</span><span class="n">password</span><span class="p">)),</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c"># TODO: DRY this up</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not create account&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">key</span> <span class="o">=</span> <span class="n">parsed</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">][</span><span class="s">&#39;account&#39;</span><span class="p">][</span><span class="s">&#39;key&#39;</span><span class="p">]</span>
+        <span class="n">capabilities</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">session</span><span class="o">=</span><span class="n">parsed</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">parsed</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="n">capabilities</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unused_sessions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parsed</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="bp">True</span>
+</div>
+<span class="k">def</span> <span class="nf">require_channnel_collection</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A decorator to fetch the channel collection if necessary&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">decorated_instance_method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># in instance methods, arg[0] will always be self</span>
+        <span class="n">zelf</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">zelf</span><span class="o">.</span><span class="n">channel_collection</span><span class="p">:</span>
+            <span class="n">zelf</span><span class="o">.</span><span class="n">_get_channel_collection</span><span class="p">()</span> <span class="c"># synchronous!</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">decorated_instance_method</span>
+
+<div class="viewcode-block" id="Session"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Session">[docs]</a><span class="k">class</span> <span class="nc">Session</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Class representation of the API&#39;s Session resource. Used to create / access</span>
+<span class="sd">    just about any Spire.io resource.</span>
+
+<span class="sd">    Initialized with instance of `Client` so we have access to schema and</span>
+<span class="sd">    resource URLs. You shouldn&#39;t need to instantiate this directly, instead</span>
+<span class="sd">    use `Client.session()`.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">session_resource</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">client</span> <span class="c"># has the schema and notification urls on it</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span> <span class="o">=</span> <span class="n">session_resource</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_channel_retries</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">channel_collection</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subscription_collection</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_get_channel_collection</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Used to populate / refresh list of existing channels. Used internally</span>
+<span class="sd">        in case of `409 Conflict`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">][</span><span class="s">&#39;channels&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;channels&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_capability</span><span class="p">(</span><span class="s">&#39;channels&#39;</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not refresh session: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">channel_collection</span> <span class="o">=</span> <span class="n">parsed</span>
+        <span class="k">return</span> <span class="n">parsed</span>
+
+    <span class="k">def</span> <span class="nf">_get_subscription_collection</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Used to populate / refresh list of existing subscriptions. Used</span>
+<span class="sd">        internally in case of `409 Conflict`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">][</span><span class="s">&#39;subscriptions&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;subscriptions&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_capability</span><span class="p">(</span><span class="s">&#39;subscriptions&#39;</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not refresh session: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">subscription_collection</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">resource</span> <span class="ow">in</span> <span class="n">parsed</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">subscription_collection</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">Subscription</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="n">resource</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">parsed</span>
+
+    <span class="k">def</span> <span class="nf">_refresh</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># If another session creates a channel after we get our session, and we</span>
+        <span class="c"># try to create the same channel, it will return 409 Conflict. This</span>
+        <span class="c"># method fetches the session and updates the ivars</span>
+        <span class="c">#</span>
+        <span class="c"># TODO: evaluate whether this method is needed in light of API beta 7</span>
+        <span class="c"># changes.</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;session&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_capability</span><span class="p">(</span><span class="s">&#39;session&#39;</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not refresh session: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span> <span class="o">=</span> <span class="n">parsed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_channel_retries</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">return</span> <span class="bp">True</span>
+
+    <span class="k">def</span> <span class="nf">_get_capability</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convenience method for walking down the session resource and plucking</span>
+<span class="sd">        out a capability.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s">&#39;session&#39;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># TODO raise and handle exceptions here instead of returning None</span>
+            <span class="n">resource</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">resource</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">resource</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;capability&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="nd">@require_channnel_collection</span>
+    <span class="k">def</span> <span class="nf">_set_channel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">channel</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">channel_collection</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">channel</span>
+        <span class="k">return</span> <span class="n">channel</span>
+
+    <span class="nd">@require_channnel_collection</span>
+    <span class="k">def</span> <span class="nf">_get_channel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="n">resource</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel_collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">resource</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Channel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">resource</span><span class="p">)</span> <span class="c"># cache objects</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="Session.channel"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Session.channel">[docs]</a>    <span class="k">def</span> <span class="nf">channel</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span> <span class="c"># None is the root channel</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns a Channel object, takes an optional name and description.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c"># Short circuit alert!</span>
+        <span class="n">channel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_channel</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">channel</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">channel</span>
+
+        <span class="c"># TODO move this into the channel class to avoid repetition</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c"># The below is a workaround for a bug in Spire, and should be rendered</span>
+        <span class="c"># unnecessary before the next beta release</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;everyone&#39;</span>
+
+        <span class="n">data</span><span class="p">[</span><span class="s">&#39;name&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="k">if</span> <span class="n">description</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">[</span><span class="s">&#39;description&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">description</span>
+
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">][</span><span class="s">&#39;channels&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;channel&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Content-type&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;channel&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_capability</span><span class="p">(</span><span class="s">&#39;channels&#39;</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">data</span><span class="p">),</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c"># TODO: DRY this up</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="n">retries</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channel_retries</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">409</span> <span class="ow">and</span> <span class="n">retries</span> <span class="o">&lt;</span> <span class="n">MAX_CHANNEL_CREATE_RETRIES</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_refresh</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_channel_retries</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">retries</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">description</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not create channel&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="n">channel</span> <span class="o">=</span> <span class="n">Channel</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="bp">self</span><span class="p">,</span> <span class="n">parsed</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_set_channel</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">channel</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">channel</span>
+</div></div>
+<span class="k">def</span> <span class="nf">require_subscription_collection</span><span class="p">(</span><span class="n">func</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;A decorator to fetch the parent session&#39;s subscription collection if</span>
+<span class="sd">    necessary. I do not like having this decorator walk up to self.session to</span>
+<span class="sd">    do this work. It could use a minor redesign but this library needs to work</span>
+<span class="sd">    when the next version of the API is deployed :)&quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">decorated_instance_method</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="c"># in instance methods, arg[0] will always be self</span>
+        <span class="n">zelf</span> <span class="o">=</span> <span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">zelf</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">subscription_collection</span><span class="p">:</span>
+            <span class="n">zelf</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">_get_subscription_collection</span><span class="p">()</span> <span class="c"># synchronous!</span>
+        <span class="k">return</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">decorated_instance_method</span>
+
+<div class="viewcode-block" id="Channel"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Channel">[docs]</a><span class="k">class</span> <span class="nc">Channel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    The Channel class is initialized with client, session, and a channel</span>
+<span class="sd">    resource. The channel resource is the json.loads() version of the resource</span>
+<span class="sd">    fetched from spire, something like</span>
+<span class="sd">    `dict(url=&#39;http://api.spire.io/foo&#39;, capability=&#39;bar&#39;)`.</span>
+
+<span class="sd">    The class holds a convenience method, `subscribe()`, that instantiates a</span>
+<span class="sd">    Subscription class. You shouldn&#39;t need to instantiate Subscription directly</span>
+<span class="sd">    in most cases, instead using the method on Channel and (soon) methods on</span>
+<span class="sd">    Client.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">session</span><span class="p">,</span> <span class="n">channel_resource</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span> <span class="o">=</span> <span class="n">session</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span> <span class="o">=</span> <span class="n">channel_resource</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="nd">@require_subscription_collection</span>
+    <span class="k">def</span> <span class="nf">_create_subscription</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;default&#39;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">session_resource</span><span class="p">[</span><span class="s">&#39;resources&#39;</span><span class="p">][</span><span class="s">&#39;subscriptions&#39;</span><span class="p">][</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;subscription&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Content-type&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;subscription&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">_get_capability</span><span class="p">(</span><span class="s">&#39;subscriptions&#39;</span><span class="p">),</span>
+                <span class="p">},</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span>
+                    <span class="n">channels</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">]],</span>
+                    <span class="n">events</span><span class="o">=</span><span class="s">&#39;messages&#39;</span><span class="p">,</span>
+                    <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                    <span class="p">)),</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="c"># if response.status_code == 409:</span>
+            <span class="c">#     pass</span>
+            <span class="c"># else:</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not subscribe: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire subscription endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="n">subscription</span> <span class="o">=</span> <span class="n">Subscription</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="p">,</span> <span class="n">parsed</span><span class="p">)</span> <span class="c"># boooo</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">subscription_collection</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">subscription</span>
+        <span class="k">return</span> <span class="n">subscription</span>
+
+    <span class="nd">@require_subscription_collection</span>
+<div class="viewcode-block" id="Channel.subscribe"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Channel.subscribe">[docs]</a>    <span class="k">def</span> <span class="nf">subscribe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">last_message_timestamp</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">callback</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        .. authomethod:: subscribe(self, name=None, last_message_timestamp=None, callback=None)</span>
+<span class="sd">           test test test</span>
+
+<span class="sd">        This is the primary means of receiving and processing methods. Calling</span>
+<span class="sd">        without passing the callback param will wait, blocking, until a message</span>
+<span class="sd">        becomes available::</span>
+
+<span class="sd">        With an async client, passing a callback will immediately return True</span>
+<span class="sd">        and execute the callback when messages are available. Callbacks take a</span>
+<span class="sd">        single argument, formatted like the `messages` array above</span>
+
+<span class="sd">        This method is a proxy for Subscription&#39;s `subscribe()`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">name</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="s">&quot;default-</span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;key&#39;</span><span class="p">]</span>
+        <span class="n">subscription</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">session</span><span class="o">.</span><span class="n">subscription_collection</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">subscription</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">subscription</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_subscription</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_on</span><span class="p">(</span>
+            <span class="n">subscription</span><span class="p">,</span>
+            <span class="n">last_message_timestamp</span><span class="o">=</span><span class="n">last_message_timestamp</span><span class="p">,</span>
+            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+            <span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_on</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">subscription</span><span class="p">,</span>
+        <span class="n">last_message_timestamp</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="n">callback</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="p">):</span>
+        <span class="k">return</span> <span class="n">subscription</span><span class="o">.</span><span class="n">subscribe</span><span class="p">(</span>
+            <span class="n">last_message_timestamp</span><span class="o">=</span><span class="n">last_message_timestamp</span><span class="p">,</span>
+            <span class="n">callback</span><span class="o">=</span><span class="n">callback</span><span class="p">,</span>
+            <span class="p">)</span>
+
+<div class="viewcode-block" id="Channel.delete"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Channel.delete">[docs]</a>    <span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Delete this channel.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">],</span>
+                <span class="p">},</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Failed to delete channel: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="Channel.publish"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Channel.publish">[docs]</a>    <span class="k">def</span> <span class="nf">publish</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Publish a message to this channel.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">content_type</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;message&#39;</span><span class="p">]</span>
+
+        <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">],</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="n">content_type</span><span class="p">,</span>
+                <span class="s">&#39;Content-type&#39;</span><span class="p">:</span> <span class="n">content_type</span><span class="p">,</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">channel_resource</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">],</span>
+                <span class="p">},</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="n">content</span><span class="o">=</span><span class="n">message</span><span class="p">)),</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="c"># TODO: DRY this up</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not publish: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire channel endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">parsed</span>
+</div></div>
+<div class="viewcode-block" id="Subscription"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Subscription">[docs]</a><span class="k">class</span> <span class="nc">Subscription</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    You shouldn&#39;t need to instantiate this object directly in most cases,</span>
+<span class="sd">    instead using the helper methods on Channel and (soon) Client.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client</span><span class="p">,</span> <span class="n">subscription_resource</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">client</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">subscription_resource</span> <span class="o">=</span> <span class="n">subscription_resource</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span> <span class="o">=</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="Subscription.subscribe"><a class="viewcode-back" href="../../ref_spire.html#spire.core.Subscription.subscribe">[docs]</a>    <span class="k">def</span> <span class="nf">subscribe</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">last_message_timestamp</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="n">callback</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+        <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        See documentation for `Channel.subscribe()`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">tries</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">&quot;timeout&quot;</span><span class="p">:</span> <span class="n">SUBSCRIBE_MAX_TIMEOUT</span><span class="p">,</span>
+            <span class="s">&quot;order-by&quot;</span><span class="p">:</span> <span class="s">&quot;asc&quot;</span><span class="p">,</span>
+            <span class="p">}</span>
+
+        <span class="n">request_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="n">headers</span><span class="o">=</span><span class="p">{</span>
+                <span class="s">&#39;Accept&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">schema</span><span class="p">[</span><span class="s">&#39;events&#39;</span><span class="p">],</span>
+                <span class="s">&#39;Authorization&#39;</span><span class="p">:</span> <span class="s">&quot;Capability </span><span class="si">%s</span><span class="s">&quot;</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">subscription_resource</span><span class="p">[</span><span class="s">&#39;capability&#39;</span><span class="p">],</span>
+                <span class="p">},</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">SUBSCRIBE_MAX_TIMEOUT</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">,</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">my_config</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">last_message_timestamp</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span> <span class="o">=</span> <span class="n">last_message_timestamp</span>
+
+        <span class="n">params</span><span class="p">[</span><span class="s">&#39;last-message&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span>
+
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">async</span>
+            <span class="k">def</span> <span class="nf">wrapped_callback</span><span class="p">(</span><span class="n">response</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+                <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire subscribe endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">callback</span><span class="p">(</span><span class="n">parsed</span><span class="p">[</span><span class="s">&#39;messages&#39;</span><span class="p">])</span>
+
+            <span class="n">request_kwargs</span><span class="p">[</span><span class="s">&#39;hooks&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">response</span><span class="o">=</span><span class="n">wrapped_callback</span><span class="p">)</span>
+            <span class="n">request</span> <span class="o">=</span> <span class="n">r_async</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">subscription_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">],</span> <span class="o">**</span><span class="n">request_kwargs</span><span class="p">)</span>
+            <span class="n">r_async</span><span class="o">.</span><span class="n">map</span><span class="p">([</span><span class="n">request</span><span class="p">])</span>
+            <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">response</span> <span class="ow">and</span> <span class="n">tries</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">:</span> <span class="c"># TODO remove tries</span>
+                <span class="n">tries</span> <span class="o">=</span> <span class="n">tries</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="c"># todo throttle fast reconnects</span>
+                <span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">subscription_resource</span><span class="p">[</span><span class="s">&#39;url&#39;</span><span class="p">],</span> <span class="o">**</span><span class="n">request_kwargs</span><span class="p">)</span>
+
+            <span class="c"># TODO: DRY this up</span>
+            <span class="c"># TODO: 409 handling here</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">response</span><span class="p">:</span> <span class="c"># XXX response is also falsy for 4xx</span>
+                <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Could not subscribe: </span><span class="si">%i</span><span class="s">&quot;</span> <span class="o">%</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">parsed</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">ValueError</span><span class="p">,</span> <span class="ne">KeyError</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="n">SpireClientException</span><span class="p">(</span><span class="s">&quot;Spire subscribe endpoint returned invalid JSON&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">parsed</span><span class="p">[</span><span class="s">&#39;messages&#39;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">message</span><span class="p">[</span><span class="s">&#39;timestamp&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">last_message_timestamp</span> <span class="o">=</span> <span class="n">message</span><span class="p">[</span><span class="s">&#39;timestamp&#39;</span><span class="p">]</span>
+
+            <span class="k">return</span> <span class="n">parsed</span><span class="p">[</span><span class="s">&#39;messages&#39;</span><span class="p">]</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none">
+  <h3>Quick search</h3>
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li><a href="../../index.html">Spire.io.py 0.1 documentation</a> &raquo;</li>
+          <li><a href="../index.html" >Module code</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer">
+        &copy; Copyright 2012, Daniel Hengeveld.
+      Created using <a href="http://sphinx.pocoo.org/">Sphinx</a> 1.1.2.
+    </div>
+  </body>
+</html>

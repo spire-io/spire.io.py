@@ -1,0 +1,24 @@
+API Documentation
+*****************
+
+.. automodule:: spire.core
+   :members: SpireClientException, Session, Subscription
+
+   .. autoclass:: Client(self, base_url='http://api.spire.io', key=None, async=True)
+      :members:
+
+   .. autoclass:: Channel(client, session, channel_resource)
+      :members:
+
+      .. method:: subscribe(self, name=None, last_message_timestamp=None, callback=None)
+
+         This is the primary means of receiving and processing methods. Calling
+         without passing the callback param will wait, blocking, until a message
+         becomes available::
+
+         With an async client, passing a callback will immediately return True
+         and execute the callback when messages are available. Callbacks take a
+         single argument, formatted like the `messages` array above
+
+         This method is a proxy for Subscription's `subscribe()`.
+

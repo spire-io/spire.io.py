@@ -1,0 +1,29 @@
+Spire.io.py Documentation
+=========================
+
+Spire.io.py is a client library for the Spire.io_ platform. It can be used with
+a Spire account key, or with just a URL and Capability provided by an
+authorized client. The library uses Kenneth Reitz' excellent Requests_ library
+under the hood, and like Requests, it supports evented (asynchronous)
+networking with gevent / libevent.
+
+.. _Spire.io: http://spire.io
+.. _Requests: http://python-requests.org
+
+
+.. toctree::
+   :maxdepth: 2
+
+   installation
+   tutorial
+   ref_spire
+   changelog
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+

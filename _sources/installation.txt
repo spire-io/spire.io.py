@@ -1,0 +1,15 @@
+Installation
+************
+
+Dependencies
+------------
+
+(up-to-date dependencies will always be in setup.py)
+
+* Requests_ is the only external dependency on Python 2.6+
+* If you are running Python 2.5, you will need to install simplejson_.
+* Asynchronous operation requires gevent_ (which in turn requires greenlet and libevent) (If you are running Debian or Ubuntu the system package (python-gevent) is recommended as installing from source via pip may lead to segfaults, and nobody likes those.)
+
+.. _Requests: http://pypi.python.org/pypi/requests
+.. _simplejson: http://pypi.python.org/pypi/simplejson/
+.. _gevent: http://pypi.python.org/pypi/gevent
