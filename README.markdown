@@ -1,8 +1,10 @@
-Spire
-=====
-http://spire.io
+Spire.io.py
+===========
 
-This is a Python `spire.io` client library
+Python client library for [Spire.io APIs](http://spire.io).
+
+Examples
+--------
 
 Here's an example using the message service.
 
@@ -18,9 +20,11 @@ Let's create a second session and get our messages.
     channel2 = session2.channel('foo', 'the foo channel')
     channel2.subscribe() # => 'What hath Shark wrought?'
     
-You can also assign listener blocks to a subscription which will be called with each message received:
+You can also assign listener blocks to a subscription which will be called with
+each message received. `async`=True indicates your system has libevent/gevent
+installed for evented callbacks.
 
-    client3 = spire.Client(async=False, key=key) # key is your account key
+    client3 = spire.Client(async=True, key=key) # key is your account key
     session3 = client3.session()
     channel3 = session3.channel('foo', 'the foo channel')
     
@@ -30,6 +34,11 @@ You can also assign listener blocks to a subscription which will be called with 
         return _callback
 
     channel3.subscribe(callback=get_callback("foo"))
+
+Documentation
+-------------
+
+[API documentation](http://spire-io.github.com/spire.io.py/)
 
 
 Dependencies
