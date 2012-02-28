@@ -37,9 +37,9 @@ def require_discovery(func):
     return decorated_instance_method
 
 class Client(object):
-    def __init__(self, base_url='http://api.spire.io', key=None, async=True):
+    def __init__(self, base_url='http://api.spire.io', secret=None, async=True):
         self.base_url = base_url
-        self.key = key
+        self.secret = secret
         self.resources = None
         self.schema = None
         self.notifications = None
@@ -90,7 +90,7 @@ class Client(object):
                 'Accept': self.schema['session'],
                 'Content-type': self.schema['account'],
                 },
-            data=json.dumps(dict(key=self.key)),
+            data=json.dumps(dict(secret=self.secret)),
             config=my_config,
             )
         # TODO: DRY this up
@@ -137,7 +137,7 @@ class Client(object):
 
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
-        self.key = parsed['resources']['account']['key']
+        self.secret = parsed['resources']['account']['secret']
         capabilities = dict(session=parsed['capability'])
         for key, value in parsed['resources'].iteritems():
             capabilities[key] = value['capability']

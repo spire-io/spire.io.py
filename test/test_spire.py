@@ -1,6 +1,6 @@
 """
 Integration tests for the Spire client library. If the environment variable
-SPIRE_KEY (and optionally SPIRE_HOST) is set, they will run against the
+SPIRE_SECRET (and optionally SPIRE_HOST) is set, they will run against the
 remote API, otherwise a (currently broken) stub API will be used.
 """
 
@@ -36,12 +36,12 @@ class TestSpireClient(unittest.TestCase):
             self.server.run()
 
     def get_client(self, async=False):
-        spire_key =  os.environ.get('SPIRE_KEY', None)
-        if spire_key is not None:
+        spire_secret =  os.environ.get('SPIRE_SECRET', None)
+        if spire_secret is not None:
             server = None
             client = spire.Client(
                 os.environ.get('SPIRE_HOST', 'https://api.spire.io'),
-                key = spire_key,
+                secret = spire_secret,
                 async=async,
                 )
         else:

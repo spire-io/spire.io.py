@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Convenience script for running tests with SPIRE_KEY and SPIRE_HOST set as args
+Convenience script for running tests with SPIRE_SECRET and SPIRE_HOST set as args
 not env vars if, say, it makes it easier for you to run it in CI
 """
 import os
@@ -9,9 +9,9 @@ import sys
 
 import nose
 
-def main(base_url, spire_key):
+def main(base_url, spire_secret):
     os.environ['SPIRE_HOST'] = base_url
-    os.environ['SPIRE_KEY'] = spire_key
+    os.environ['SPIRE_SECRET'] = spire_secret
     nose.main(argv=sys.argv[:1], defaultTest='test')
 
 if __name__ == '__main__':
