@@ -108,9 +108,9 @@ class Client(object):
         # required to create a session, meaning we don't have to validate the
         # schema in Session (if we do any schema validation it should be before
         # creating the class, in my opinion/gut-feeling).
-        capabilities = dict(session=parsed['capability'])
+        capabilities = dict(session=parsed['capabilities'])
         for key, value in parsed['resources'].iteritems():
-            capabilities[key] = value['capability']
+            capabilities[key] = value['capabilities']
 
         return Session(self, parsed)
 
@@ -138,9 +138,9 @@ class Client(object):
         except (ValueError, KeyError):
             raise SpireClientException("Spire endpoint returned invalid JSON")
         self.secret = parsed['resources']['account']['secret']
-        capabilities = dict(session=parsed['capability'])
+        capabilities = dict(session=parsed['capabilities'])
         for key, value in parsed['resources'].iteritems():
-            capabilities[key] = value['capability']
+            capabilities[key] = value['capabilities']
         self._unused_sessions.append(Session(self, parsed))
 
         return True
@@ -172,7 +172,7 @@ class Session(object):
             self.session_resource['resources']['channels']['url'],
             headers={
                 'Accept': self.client.schema['channels'],
-                'Authorization': "Capability %s" % self.get_capability('channels'),
+                'Authorization': "Capability %s" % self.get_capability('channels', 'all'),
                 },
             )
         if not response: # XXX response is also falsy for 4xx
@@ -190,7 +190,7 @@ class Session(object):
             self.session_resource['resources']['subscriptions']['url'],
             headers={
                 'Accept': self.client.schema['subscriptions'],
-                'Authorization': "Capability %s" % self.get_capability('subscriptions'),
+                'Authorization': "Capability %s" % self.get_capability('subscriptions', 'all'),
                 },
             )
         if not response: # XXX response is also falsy for 4xx
@@ -216,7 +216,7 @@ class Session(object):
             self.session_resource['url'],
             headers={
                 'Accept': self.client.schema['session'],
-                'Authorization': "Capability %s" % self.get_capability('session'),
+                'Authorization': "Capability %s" % self.get_capability('session', 'get'),
                 },
             )
         if not response: # XXX response is also falsy for 4xx
@@ -229,14 +229,14 @@ class Session(object):
         self._channel_retries = {}
         return True
 
-    def get_capability(self, key):
+    def get_capability(self, key, method):
         if key == 'session':
-            return self.session_resource['capability']
+            return self.session_resource['capabilities'].get(method, None)
         else:
             # TODO raise and handle exceptions here instead of returning None
             resource = self.session_resource['resources'].get(key, None)
             if resource:
-                return resource.get('capability', None)
+                return resource['capabilities'].get(method, None)
             else:
                 return None
 
@@ -276,7 +276,7 @@ class Session(object):
             headers={
                 'Accept': self.client.schema['channel'],
                 'Content-type': self.client.schema['channel'],
-                'Authorization': "Capability %s" % self.get_capability('channels'),
+                'Authorization': "Capability %s" % self.get_capability('channels', 'create'),
                 },
             data=json.dumps(data),
             config=my_config,
@@ -329,7 +329,7 @@ class Channel(object):
             headers={
                 'Accept': self.client.schema['subscription'],
                 'Content-type': self.client.schema['subscription'],
-                'Authorization': "Capability %s" % self.session.get_capability('subscriptions'),
+                'Authorization': "Capability %s" % self.session.get_capability('subscriptions', 'create'),
                 },
             data=json.dumps(dict(
                     channels=[self.channel_resource['url']],
@@ -389,7 +389,7 @@ class Channel(object):
         response = requests.delete(
             self.channel_resource['url'],
             headers={
-                'Authorization': "Capability %s" % self.channel_resource['capability'],
+                'Authorization': "Capability %s" % self.channel_resource['capabilities'].get('delete', None),
                 },
             )
         if not response: # XXX response is also falsy for 4xx
@@ -404,7 +404,7 @@ class Channel(object):
             headers={
                 'Accept': content_type,
                 'Content-type': content_type,
-                'Authorization': "Capability %s" % self.channel_resource['capability'],
+                'Authorization': "Capability %s" % self.channel_resource['capabilities'].get('publish', None),
                 },
             data=json.dumps(dict(content=message)),
             config=my_config,
@@ -441,7 +441,7 @@ class Subscription(object):
         request_kwargs = dict(
             headers={
                 'Accept': self.client.schema['events'],
-                'Authorization': "Capability %s" % self.subscription_resource['capability'],
+                'Authorization': "Capability %s" % self.subscription_resource['capabilities'].get('messages', None),
                 },
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
             params=params,
