@@ -318,7 +318,7 @@ class Channel(object):
         self.client = client
         self.session = session
         self.channel_resource = channel_resource
-        self.last_message_timestamp = None
+        self.last_timestamp = None
 
     @require_subscription_collection
     def _create_subscription(self, name=None):
@@ -352,7 +352,7 @@ class Channel(object):
         return subscription
 
     @require_subscription_collection
-    def subscribe(self, name=None, last_message_timestamp=None, callback=None):
+    def subscribe(self, name=None, last_timestamp=None, callback=None):
         if name is None:
             print self.channel_resource
             name = "default-%s" % self.channel_resource['name']
@@ -362,14 +362,14 @@ class Channel(object):
 
         return self._on(
             subscription,
-            last_message_timestamp=last_message_timestamp,
+            last_timestamp=last_timestamp,
             callback=callback,
             )
 
     def _on(
         self,
         subscription,
-        last_message_timestamp=None,
+        last_timestamp=None,
         callback=None,
         ):
         """
@@ -381,7 +381,7 @@ class Channel(object):
         `subscribe` method.
         """
         return subscription.subscribe(
-            last_message_timestamp=last_message_timestamp,
+            last_timestamp=last_timestamp,
             callback=callback,
             )
 
@@ -424,11 +424,11 @@ class Subscription(object):
     def __init__(self, client, subscription_resource):
         self.client = client
         self.subscription_resource = subscription_resource
-        self.last_message_timestamp = None
+        self.last_timestamp = None
 
     def subscribe(
         self,
-        last_message_timestamp=None,
+        last_timestamp=None,
         callback=None,
         ):
         response = None
@@ -448,13 +448,13 @@ class Subscription(object):
             config=my_config,
             )
 
-        if last_message_timestamp is None:
-            if not self.last_message_timestamp:
-                self.last_message_timestamp = 0
+        if last_timestamp is None:
+            if not self.last_timestamp:
+                self.last_timestamp = 0
         else:
-            self.last_message_timestamp = last_message_timestamp
+            self.last_timestamp = last_timestamp
 
-        params['last'] = self.last_message_timestamp
+        params['last'] = self.last_timestamp
 
         if callback is not None:
             assert self.client.async
@@ -483,6 +483,6 @@ class Subscription(object):
                 parsed = json.loads(response.content)
             except (ValueError, KeyError):
                 raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
-            self.last_message_timestamp = parsed['last']
+            self.last_timestamp = parsed['last']
 
             return parsed['messages']

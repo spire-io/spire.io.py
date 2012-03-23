@@ -106,7 +106,7 @@ class TestSpireClient(unittest.TestCase):
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
 
-        messages = second_client_channel.subscribe(last_message_timestamp=0)
+        messages = second_client_channel.subscribe(last_timestamp=0)
         eq(
             [x['content'] for x in messages][:2],
             ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
@@ -137,7 +137,7 @@ class TestSpireClient(unittest.TestCase):
                 )
 
         second_client_channel.subscribe(
-            last_message_timestamp=0,
+            last_timestamp=0,
             callback=_second_channel,
             )
 
