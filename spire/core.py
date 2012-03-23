@@ -333,7 +333,6 @@ class Channel(object):
                 },
             data=json.dumps(dict(
                     channels=[self.channel_resource['url']],
-                    events='messages',
                     name=name,
                     )),
             config=my_config,
@@ -442,7 +441,7 @@ class Subscription(object):
         request_kwargs = dict(
             headers={
                 'Accept': self.client.schema['events'],
-                'Authorization': "Capability %s" % self.subscription_resource['capabilities'].get('messages', None),
+                'Authorization': "Capability %s" % self.subscription_resource['capabilities'].get('events', None),
                 },
             timeout=SUBSCRIBE_MAX_TIMEOUT+1,
             params=params,
@@ -455,7 +454,7 @@ class Subscription(object):
         else:
             self.last_message_timestamp = last_message_timestamp
 
-        params['last-message'] = self.last_message_timestamp
+        params['last'] = self.last_message_timestamp
 
         if callback is not None:
             assert self.client.async
@@ -484,8 +483,6 @@ class Subscription(object):
                 parsed = json.loads(response.content)
             except (ValueError, KeyError):
                 raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
-            for message in parsed['messages']:
-                if message['timestamp'] > self.last_message_timestamp:
-                    self.last_message_timestamp = message['timestamp']
+            self.last_message_timestamp = parsed['last']
 
             return parsed['messages']
