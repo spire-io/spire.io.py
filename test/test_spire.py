@@ -112,6 +112,19 @@ class TestSpireClient(unittest.TestCase):
             ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
             )
 
+    def test_get_subscriptions_for_channel(self):
+        self.client, self.server = self.get_client(async=True)
+        channel = self.client.session().channel()
+        channel.subscribe(name="sub-a-dub-dub")
+
+        subscriptions = channel.subscriptions()
+
+        eq(
+            subscriptions["sub-a-dub-dub"].subscription_resource["name"],
+            "sub-a-dub-dub"
+        )
+
+
     def test_create_and_publish_to_default_channel_evented(self):
         self.client, self.server = self.get_client(async=True)
 

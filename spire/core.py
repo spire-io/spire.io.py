@@ -420,6 +420,27 @@ class Channel(object):
 
         return parsed
 
+    def subscriptions(self):
+        response = requests.get(
+            self.channel_resource['resources']['subscriptions']['url'],
+            headers={
+                'Accept': self.client.schema['subscriptions'],
+                'Authorization': "Capability %s" % self.channel_resource['resources']['subscriptions']['capabilities']['get_subscriptions']
+                },
+            )
+        if not response: # XXX response is also falsy for 4xx
+            raise SpireClientException("Could not get subscripions for channel: %i" % response.status_code)
+        try:
+            parsed = json.loads(response.content)
+        except (ValueError, KeyError):
+            raise SpireClientException("Spire endpoint returned invalid JSON")
+
+        subscriptions= {}
+        for key, resource in parsed.iteritems():
+            subscriptions[key] = Subscription(self.client, resource)
+
+        return subscriptions
+
 class Subscription(object):
     def __init__(self, client, subscription_resource):
         self.client = client
