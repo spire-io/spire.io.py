@@ -355,7 +355,8 @@ class Channel(object):
     @require_subscription_collection
     def subscribe(self, name=None, last_message_timestamp=None, callback=None):
         if name is None:
-            name = "default-%s" % self.channel_resource['key']
+            print self.channel_resource
+            name = "default-%s" % self.channel_resource['name']
         subscription = self.session.subscription_collection.get(name, None)
         if subscription is None:
             subscription = self._create_subscription(name=name)
