@@ -29,8 +29,8 @@ installed for evented callbacks.
     channel3 = session3.channel('foo', 'the foo channel')
     
     def get_callback(channel_name):
-        def _callback(messages):
-            print messages
+        def _callback(events):
+            print events
         return _callback
 
     channel3.subscribe(callback=get_callback("foo"))

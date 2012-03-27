@@ -98,7 +98,8 @@ class TestSpireClient(unittest.TestCase):
         assert first_client_channel.session != second_client_channel.session
         first_client_channel.publish('picture yourself on a boat on a river')
 
-        messages = second_client_channel.subscribe()
+        events = second_client_channel.subscribe()
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][:1],
             ['picture yourself on a boat on a river'],
@@ -106,7 +107,8 @@ class TestSpireClient(unittest.TestCase):
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
 
-        messages = second_client_channel.subscribe(last_timestamp=0)
+        events = second_client_channel.subscribe(last_timestamp=0)
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][:2],
             ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
@@ -133,7 +135,8 @@ class TestSpireClient(unittest.TestCase):
         assert first_client_channel.session != second_client_channel.session
         first_client_channel.publish('picture yourself on a boat on a river')
 
-        def _first_channel(messages):
+        def _first_channel(events):
+            messages = events["messages"]
             eq(
                 [x['content'] for x in messages][:1],
                 ['picture yourself on a boat on a river'],
@@ -143,7 +146,8 @@ class TestSpireClient(unittest.TestCase):
 
         first_client_channel.publish('with tangerine trees and marmalade skies')
 
-        def _second_channel(messages):
+        def _second_channel(events):
+            messages = events["messages"]
             eq(
                 [x['content'] for x in messages][:2],
                 ['with tangerine trees and marmalade skies', 'picture yourself on a boat on a river'],
@@ -160,7 +164,8 @@ class TestSpireClient(unittest.TestCase):
         assert first_client_channel.session != second_client_channel.session
         first_client_channel.publish('Do you want ants?')
 
-        messages = second_client_channel.subscribe()
+        events = second_client_channel.subscribe()
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][0],
             'Do you want ants?',
@@ -168,7 +173,8 @@ class TestSpireClient(unittest.TestCase):
 
         first_client_channel.publish("BECAUSE THAT'S HOW YOU GET ANTS")
 
-        messages = second_client_channel.subscribe()
+        events = second_client_channel.subscribe()
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][0],
             "BECAUSE THAT'S HOW YOU GET ANTS",
@@ -193,7 +199,8 @@ class TestSpireClient(unittest.TestCase):
             )
 
         channel.publish('you blocked me on facebook - prepare to die')
-        messages = channel.subscribe()
+        events = channel.subscribe()
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][0],
             'you blocked me on facebook - prepare to die',
@@ -222,7 +229,8 @@ class TestSpireClient(unittest.TestCase):
             )
 
         channel.publish('you blocked me on facebook - prepare to die')
-        messages = unprivileged_subscription.subscribe()
+        events = unprivileged_subscription.subscribe()
+        messages = events["messages"]
         eq(
             [x['content'] for x in messages][0],
             'you blocked me on facebook - prepare to die',

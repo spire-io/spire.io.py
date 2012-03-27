@@ -485,7 +485,7 @@ class Subscription(object):
                     parsed = json.loads(response.content)
                 except (ValueError, KeyError):
                     raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
-                return callback(parsed['messages'])
+                return callback(parsed)
 
             request_kwargs['hooks'] = dict(response=wrapped_callback)
             request = r_async.get(self.subscription_resource['url'], **request_kwargs)
@@ -507,4 +507,4 @@ class Subscription(object):
                 raise SpireClientException("Spire subscribe endpoint returned invalid JSON")
             self.last_timestamp = parsed['last']
 
-            return parsed['messages']
+            return parsed
