@@ -321,7 +321,7 @@ class Channel(object):
         self.last_timestamp = None
 
     @require_subscription_collection
-    def _create_subscription(self, name=None, timeout=None):
+    def _create_subscription(self, name=None, expiration=None):
         if name is None:
             name = 'default'
         response = requests.post(
@@ -334,7 +334,7 @@ class Channel(object):
             data=json.dumps(dict(
                     channels=[self.channel_resource['url']],
                     name=name,
-                    timeout=timeout
+                    expiration=expiration
                     )),
             config=my_config,
             )
